@@ -36,7 +36,7 @@ test('inbound decrypts through a relay and returns generic encrypted success wit
       token: { unverified: true },
     };
 
-    // Tokens are intentionally not validated or burned at this temporary sink.
+    // Tokens are intentionally not validated or burned at this discard sink.
     // A repeated logical report receives the same generic result.
     for (let i = 0; i < 2; i++) {
       const result = await client.send(report, {

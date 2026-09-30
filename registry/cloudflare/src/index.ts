@@ -1,6 +1,5 @@
 import { assertPublicWatchlist, watchlistExpired, type Watchlist } from './watchlist.js';
 
-export const UPSTREAM_URL = 'https://adpocalypse.net/fray/watchlist.json';
 export const WATCHLIST_PATH = '/v1/watchlist.json';
 export const SNAPSHOT_KEY = 'watchlist:v1';
 export const MAX_SNAPSHOT_BYTES = 1024 * 1024;
@@ -8,10 +7,31 @@ const REQUEST_TIMEOUT_MS = 10_000;
 const MAX_CACHE_SECONDS = 300;
 
 export interface Env {
+  /** Operator-controlled public source; never derived from an incoming request. */
+  UPSTREAM_URL?: string;
   REGISTRY: {
     get(key: string): Promise<string | null>;
     put(key: string, value: string): Promise<void>;
   };
+}
+
+function upstreamUrl(value: unknown): string {
+  const invalid = () =>
+    new Error('UPSTREAM_URL must be an absolute HTTPS URL without credentials, query or fragment');
+  if (
+    typeof value !== 'string' ||
+    !/^https:\/\//i.test(value) ||
+    /[\u0000-\u0020\u007f\\?#]/.test(value)
+  )
+    throw invalid();
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw invalid();
+  }
+  if (url.protocol !== 'https:' || !url.hostname || url.username || url.password) throw invalid();
+  return url.href;
 }
 
 interface Options {
@@ -94,14 +114,15 @@ async function readBounded(response: Response, signal: AbortSignal): Promise<str
 }
 
 /** Used only by scheduled refreshes and the operator's seed command, never by public GET. */
-export async function downloadSnapshot(options: Options = {}): Promise<string> {
+export async function downloadSnapshot(sourceUrl: unknown, options: Options = {}): Promise<string> {
+  const source = upstreamUrl(sourceUrl);
   const fetcher = options.fetch ?? fetch;
   const now = options.now ?? Date.now;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
     const response = await abortable(
-      fetcher(UPSTREAM_URL, {
+      fetcher(source, {
         method: 'GET',
         headers: { accept: 'application/json' },
         redirect: 'manual',
@@ -129,7 +150,7 @@ export async function downloadSnapshot(options: Options = {}): Promise<string> {
 }
 
 export async function refreshSnapshot(env: Env, options: Options = {}): Promise<void> {
-  const body = await downloadSnapshot(options);
+  const body = await downloadSnapshot(env.UPSTREAM_URL, options);
   const next = parseSnapshot(body);
   const previousBody = await env.REGISTRY.get(SNAPSHOT_KEY);
   if (previousBody !== null) {

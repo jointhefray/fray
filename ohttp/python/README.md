@@ -1,6 +1,6 @@
 # Python OHTTP relay
 
-This is an opaque relay, compatible with the TypeScript gateway and extension transport. Python never decrypts the report or holds gateway keys.
+This is an opaque relay, compatible with the TypeScript gateway and protocol client. Python never decrypts the report or holds gateway keys.
 
 Requires Python 3.11 or later:
 

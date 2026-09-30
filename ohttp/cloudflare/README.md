@@ -25,27 +25,14 @@ The module does not log requests, and Wrangler observability is disabled. Config
 
 Tests cover the exact HTTP bytes sent, header removal, fragmented/chunked responses, truncation, size limits and redirects. The dry-run build checks Worker packaging. An actual account deployment and gateway-side egress inspection remain necessary before serving users.
 
-## Initial Fray deployment
+## Gateway access and key authentication
 
-The hosted Fray relay is `https://ohttp.jointhefray.org` and forwards to
-`https://inbound.jointhefray.org/ohttp` and its public key endpoint. This repository
-ships operator placeholders, not that deployment's configuration. Worker
-observability and preview hostnames are disabled in the example configuration.
+WAF and rate limits on the public relay do not restrict direct requests to the
+gateway. If your deployment requires relay-only ingress, configure authentication
+or network access controls at the gateway separately; this example does not
+provide them.
 
-The inbound hostname is a DNS-only CNAME to its Heroku domain, with Heroku
-managed TLS. It must remain outside Cloudflare's proxy for the TLS socket
-transport. The Heroku inbound service currently decrypts and discards reports;
-it does not store reports or redeem tokens. Both services are controlled by
-Fray in this initial rollout, so independent operation is not established.
-
-The website at `jointhefray.org` may use Cloudflare's proxy independently. Apply
-WAF/rate limits to the public report entry point, `ohttp.jointhefray.org`.
-These controls do not protect direct requests to the inbound Heroku origin;
-restricting that origin to authenticated relay traffic is a separate change.
-The initial rollout has not configured custom WAF rules or origin authentication.
-
-Production gateway keys must be pinned through the extension's trusted release
-configuration. The relay's `/ohttp-keys` endpoint is not an independent source
-of trust. The live encrypted roundtrip through the production relay and inbound
-hostname passed on 30 September 2026, as did authenticated token issuance and SDK
-local authorization checks. Repeat verification when changing DNS, TLS or keys.
+Authenticate or pin gateway keys through the client's trusted configuration.
+The relay's `/ohttp-keys` endpoint is not an independent source of trust. Operating
+both relay and gateway under one operator does not establish the separation
+described in the [privacy boundary](../README.md#deployment-boundaries).

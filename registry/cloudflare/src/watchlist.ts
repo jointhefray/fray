@@ -63,7 +63,7 @@ function timestamp(value: unknown): value is string {
   );
 }
 
-/** Independent implementation of the public schema; no browser SDK dependency. */
+/** Validate the public watchlist schema before publication. */
 export function assertPublicWatchlist(value: unknown): asserts value is Watchlist {
   requireValid(object(value) && hasOnlyKeys(value, DOCUMENT_KEYS));
   requireValid(value.v === 1 && Number.isSafeInteger(value.version) && Number(value.version) >= 1);

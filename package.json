@@ -14,13 +14,7 @@
     "setup": "node scripts/packages.mjs ci",
     "build": "node scripts/packages.mjs build",
     "typecheck": "node scripts/packages.mjs typecheck",
-    "test": "node scripts/packages.mjs test",
-    "test:collector": "node scripts/collector-test.mjs",
-    "demo": "node scripts/demo.mjs"
-  },
-  "dependencies": {
-    "@cloudflare/blindrsa-ts": "0.4.6",
-    "redis": "^4.7.0"
+    "test": "node scripts/packages.mjs test"
   },
   "devDependencies": {
     "prettier": "3.9.6"

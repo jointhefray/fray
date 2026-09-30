@@ -1,10 +1,10 @@
-# Fray report envelopes — v1 and v2
+# Fray report envelope
 
-[`envelope.schema.json`](envelope.schema.json) accepts two explicit versions:
-`v: 1` creative sightings and `v: 2` Google advertiser lookup reports. Both
-creative shapes require only `title`; neither includes an inferred destination
-domain. Clients must sanitize fields before serializing an envelope; schema
-validation checks structure, not whether the user's query has been removed.
+The advertiser lookup report uses wire version `v: 2`, defined in
+[`envelope.schema.json`](envelope.schema.json). A non-null creative requires
+`title`; no inferred destination domain is included. Clients must sanitize fields
+before serializing an envelope; schema validation checks structure, not whether
+the user's query has been removed.
 
 The host MUST obtain each user's informed, explicit consent before enrolling them
 in Fray. Participation is off by default, and withdrawal stops future collection
@@ -12,9 +12,9 @@ and reporting. Disclose the evidence, recipients and privacy limits before that
 choice; see [`protocol.md` §1.1](protocol.md#11-informed-explicit-consent-before-enrollment).
 Neither a client library, a valid token nor this schema independently establishes consent.
 
-## V2 lookup report
+## Advertiser lookup report
 
-V2 carries the advertiser details returned by Google's lookup, the original
+The report carries the advertiser details returned by Google's lookup, the original
 `batchCode`, and the original `atParameter`. **These are page-scoped request values,
 not anonymous ad fields.** The `atParameter` includes a precise 13-digit timestamp.
 Recipients can associate these values with a Google page/request; Google can
@@ -56,23 +56,23 @@ do not make the lookup fields unlinkable.
 
 The lookup strings above are fictional. Token fields are abbreviated for display.
 
-| Field                         | V2 contract                                                                                                                                               |
+| Field                         | Contract                                                                                                                                               |
 | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `v`                           | Exactly `2`.                                                                                                                                              |
 | `watchlist_version` / `brand` | Fresh watchlist version and matched entry's domain.                                                                                                       |
 | `platform` / `surface`        | Exactly `google.com` / `search`.                                                                                                                          |
 | `observed_hour`               | A real UTC hour bucket, with minutes/seconds zero. This field is coarse; `lookup.atParameter` still contains a precise timestamp.                         |
 | `observed_domain`             | The normalized displayed domain that matched the entry's domain exactly or as a subdomain. Maximum 253 characters; not a URL.                                       |
-| `creative`                    | A sanitized creative with a required `title` and optional v1 fields, or `null` when extraction exposes lookup data without a usable creative. Null does not bypass the domain match. |
+| `creative`                    | A sanitized creative with a required `title` and optional fields listed below, or `null` when extraction exposes lookup data without a usable creative. Null does not bypass the domain match. |
 | `advertiser.id`               | Optional Google transparency ID: `AR` followed by 1–62 digits.                                                                                            |
 | `advertiser.name`             | Required nonblank platform-returned name, at most 200 characters.                                                                                         |
 | `advertiser.country`          | Optional nonblank advertiser country label/code, at most 100 characters. It is not client geography.                                                      |
 | `lookup.kind`                 | Exactly `google-batchexecute`.                                                                                                                            |
 | `lookup.batchCode`            | Original nonempty opaque batch string, no ASCII whitespace/control characters. Never truncated.                                                           |
 | `lookup.atParameter`          | Original string: 10–512 URL-safe token characters, followed by `:`, `%3A` or `%3a`, followed by exactly 13 decimal digits. Never synthesized.             |
-| `token`                       | One unused blind-signed sighting token, using the existing issuance protocol.                                                                             |
+| `token`                       | One unused blind-signed sighting token, using the issuance protocol.                                                                             |
 
-### V2 construction and handling
+### Construction and handling
 
 1. Extract the hostname from the ad's display URL, retaining subdomains and doing
    so before query-text redaction. Match it against a fresh watchlist before looking up
@@ -89,8 +89,8 @@ The lookup strings above are fictional. Token fields are abbreviated for display
    validation does not replace sanitization.
 3. Copy `batchCode` and `atParameter` exactly as extracted. Preserve the colon or
    percent-encoded colon spelling; do not decode/re-encode, shorten, strip the
-   timestamp, or replace these request values. This is a deliberate v2 exception
-   to v1's restriction on page-scoped values and finer timestamps.
+   timestamp, or replace these request values. These fields deliberately retain
+   their page/request association and precise timestamp.
 4. Whitelist transmitted objects. Do not include `adKey`, `atParameterEncoded`,
    raw lookup responses, cookies, account data, page URLs, explicit query fields,
    or other properties from the candidate. Unknown fields are schema errors.
@@ -98,41 +98,13 @@ The lookup strings above are fictional. Token fields are abbreviated for display
    (`8 * 1024 - 128`) to leave room for the collector wrapper. Reject an oversized
    report; never truncate lookup values to make it fit.
 
-The collector accepts both versions and persists the complete accepted envelope
-for the raw-report retention period. V2 batch/at values therefore remain present
+The collector persists the complete accepted envelope
+for the raw-report retention period. Batch/at values therefore remain present
 in stored reports. They are excluded from grouping keys, which use the observed
 domain, advertiser identity and optional creative. Excluding them from grouping
 is not a claim that they cannot be used for correlation.
 
-The remaining sections describe the **v1** format. Its
-stronger field restrictions must not be presented as properties of v2.
-
-## V1 example
-
-```json
-{
-  "v": 1,
-  "watchlist_version": 12,
-  "brand": "example-fashion.com",
-  "platform": "google.com",
-  "surface": "search",
-  "observed_hour": "2026-08-29T14:00:00Z",
-  "creative": {
-    "title": "Example Fashion Clearance — 90% Off Everything",
-    "body": "Final closing down sale. All stock must go today.",
-    "display_url": "example-fashion.com/sale",
-    "click_url": "https://www.googleadservices.com/pagead/aclk?sa=L&ai=C0AAAAAAAAAAopaqueAAAAAAAAAAAA&sig=AOD64_0AAAAAopaqueAAAAAAAAAAAA&adurl=https%3A%2F%2Fexamplefashion-outlet.shop%2Fsale",
-    "advertiser_id": "AR55554444111122223333",
-    "advertiser_name": "EF OUTLET LTD"
-  },
-  "token": {
-    "issuer": "issuer.partner.example",
-    "kid": "ep-2026-08",
-    "msg": "qL7…base64…",
-    "sig": "hJ2…base64…"
-  }
-}
-```
+## Gateway wrapper
 
 The OHTTP gateway decrypts the report and wraps it before forwarding to the private collector:
 
@@ -140,33 +112,30 @@ The OHTTP gateway decrypts the report and wraps it before forwarding to the priv
 { "country": "ZZ", "envelope": { …as above… } }
 ```
 
-`ZZ` means unknown country. The OHTTP profile does not derive country from the client IP. Clients MUST NOT put client geography inside the envelope; unknown fields are rejected. The v2 advertiser.country field describes the advertiser, not the client.
+`ZZ` means unknown country. The OHTTP profile does not derive country from the client IP. Clients MUST NOT put client geography inside the envelope; unknown fields are rejected. The `advertiser.country` field describes the advertiser, not the client.
 
-## V1 fields
+## Creative fields
 
-| Field                              | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `v`                                | Envelope version. This document describes `1`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `watchlist_version`                | Integer version of the published watchlist the client matched against. Lets the collector discount hits from stale lists.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| `brand`                            | The watchlist entry's `domain` that matched. Never free text.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `platform`                         | Platform token as in the advertisers.txt registry (`google.com`, `microsoft.com`, …) for the ad system that served the creative.                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `surface`                          | `search` for search results; `feed` for YouTube feed ads.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `observed_hour`                    | Observation time truncated to the hour, UTC, RFC 3339. Never finer.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `creative.title` / `creative.body` | Visible ad text **after sanitization** (below). Title is required; body is optional. Truncated to 300 / 1000 chars.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `creative.display_url`             | The display URL string as shown, sans any query string.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| `creative.click_url`               | The ad's served click href after query-keyword redaction, preserving unrelated URL evidence. On Google this is normally the `googleadservices.com/pagead/aclk?…` redirector. Optional, HTTPS only, no embedded credentials, ≤ 2048 characters after sanitization, and never followed. This field preserves platform parameters except the matched query spans; it is sanitized evidence and must not be represented as an exact original href when redacted. See rule 2 below. |
-| `creative.advertiser_id`           | Platform transparency identifier if the surface exposes one (e.g. Google's `AR…`). Optional.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `creative.advertiser_name`         | Advertiser name as shown by the platform's disclosure UI. Optional.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `token`                            | One unused sighting token: issuing host, epoch key id, base64 message and signature. See [`protocol.md`](protocol.md).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+`creative` may be `null`. When present, it has the following fields and accepts
+no additional properties. Destination domains are not inferred or sent.
 
-## Creative sanitization (both versions, client-side before construction)
+| Field | Meaning |
+| --- | --- |
+| `title` | Required visible ad title after sanitization, 1–300 characters. |
+| `body` | Optional visible ad body after sanitization, at most 1000 characters. |
+| `display_url` | Optional display text after sanitization, without query or fragment, at most 300 characters. |
+| `click_url` | Optional served HTTPS href after query-keyword redaction, at most 2048 characters, without embedded credentials. Never followed. Preserve unrelated URL evidence as specified below. |
+| `advertiser_id` | Optional platform transparency ID: `AR` followed by 1–62 digits. |
+| `advertiser_name` | Optional sanitized name shown by the platform's disclosure UI, at most 200 characters. |
+
+## Creative sanitization (client-side before construction)
 
 1. **Redact search-query matches, retaining the remaining evidence.** Do not copy
    the user's query into an explicit report field. Platforms may insert it into
    creatives through dynamic keyword insertion. The client MUST replace each
    occurrence of the complete trimmed query, and each whitespace-separated query
    term of length ≥ 3, with `‹q›` in creative title/body, display text and advertiser
-   name text; v2 also applies this to advertiser name/country. Matching is
+   name text, including `advertiser.name` and `advertiser.country`. Matching is
    case-insensitive. Try longer patterns first, collapse adjacent placeholders,
    and redact before truncating to field limits. Short terms are not independently
    redacted, but the complete query is matched regardless of its length.
@@ -224,20 +193,20 @@ The OHTTP gateway decrypts the report and wraps it before forwarding to the priv
    must not claim a redacted value is byte-for-byte what the platform originally
    served. Every other URL field still loses its query string and fragment.
 
-The following additional restrictions describe v1. V2's original batch/at
-values remain the explicit exception described above; do not apply text or URL
-redaction to those opaque lookup fields and claim they became anonymous.
+3. **No added user identifiers.** Do not append cookies, storage values, account
+   data, extension install IDs or page URLs. The original `lookup.batchCode` and
+   `lookup.atParameter` are the permitted page-scoped request fields. Do not apply
+   text or URL redaction to these opaque fields and claim they became anonymous.
+4. **Hour bucketing** applies to `observed_hour` at capture, not at send. Do not
+   add another client observation timestamp. The original `lookup.atParameter`
+   retains its precise platform timestamp, and click-URL parameters may carry
+   their own timing information.
+5. **Watchlist and authorization checks.** A fresh domain match and a locally
+   confirmed likely unauthorized advertiser are required before creating a report.
+   Non-matching, authorized and inconclusive candidates are not reported.
 
-3. **No added user identifiers.** Nothing from cookies, storage, accounts, extension install IDs, or
-   the page outside the ad element itself may appear in the envelope.
-4. **Hour bucketing** is applied to the observation timestamp at capture, not at
-   send. Do not create or send a finer client observation timestamp. Retained
-   platform click-URL parameters may still carry their own timing information.
-5. **Watchlist hits only.** If nothing on the published watchlist matched, no envelope is
-   ever created. Non-matching ads leave no trace.
+## Size
 
-## V1 size
-
-Serialized envelopes MUST be ≤ 8 KiB. The example collector limits the complete
-gateway-wrapped request body to 8 KiB, so clients must also leave room for that
-wrapper. Oversized request bodies are rejected before entering the verification pipeline.
+The complete serialized UTF-8 envelope MUST be at most **8064 bytes**, leaving
+128 bytes within the 8 KiB application-body limit for the gateway wrapper.
+Reject oversized reports before transmission; never truncate lookup values.

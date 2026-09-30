@@ -1,14 +1,12 @@
 # Public Fray registry on Cloudflare
 
-`https://registry.jointhefray.org/v1/watchlist.json` publishes the existing public
-domain and authorized-advertiser watchlist. This Worker stores public snapshots
-only. It never receives or stores tokens, sightings, account credentials or
-per-user registry data.
+`GET /v1/watchlist.json` publishes a public domain and authorized-advertiser
+watchlist. The Worker stores validated public snapshots. Its API provides no
+token issuance, report submission or account operations.
 
-A Cron Trigger fetches the fixed source
-`https://adpocalypse.net/fray/watchlist.json` every 15 minutes. Public GET and HEAD
+A Cron Trigger fetches a fixed upstream source every 15 minutes. Public GET and HEAD
 requests read KV only; a missing snapshot never triggers an upstream fetch.
-Consequently visitor headers and identity are not forwarded to the issuer. The
+Consequently visitor headers and identity are not forwarded to the source. The
 scheduled request has only a fixed URL and an `Accept: application/json` header.
 Cloudflare still handles visitor connections to this public endpoint; this is
 not an anonymous transport.
@@ -29,9 +27,8 @@ past source expiry, with `must-revalidate`. CORS allows public GET/HEAD/OPTIONS.
 
 KV is eventually consistent; locations may briefly see different valid
 revisions. Every response independently checks expiry. A failed refresh can
-continue serving the previous valid revision until its original expiry. SDK
-clients separately cache a list for up to 24 hours, bounded by that expiry, so
-the publication schedule does not promise immediate client updates.
+continue serving the previous valid revision until its original expiry. Client
+caching can further delay revision updates and must respect the document's expiry.
 
 ## Build and test
 
@@ -47,7 +44,7 @@ npm test
 npm run build
 ```
 
-## Initial seed and deployment
+## Seed and deploy
 
 The example configuration contains no production account, custom domain or KV
 namespace. Create a namespace in your own Cloudflare account:
@@ -59,19 +56,25 @@ npx wrangler kv namespace create REGISTRY
 Replace the all-zero `id` under `kv_namespaces` with the returned namespace ID.
 Set your account and custom-domain route in `wrangler.toml`. The `REGISTRY`
 namespace must contain public snapshots only; its single key is `watchlist:v1`.
-The fixed refresh source is the public Fray feed at
-`https://adpocalypse.net/fray/watchlist.json`; change the source constant and test
-its schema compatibility if operating a different registry.
+
+Set the `UPSTREAM_URL` Worker variable under `[vars]` in `wrangler.toml` to your
+trusted public watchlist source, such as `https://publisher.example.org/watchlist.json`.
+It must use HTTPS without credentials, a query string or a fragment, and serve
+documents matching `spec/watchlist.schema.json`. Missing or invalid configuration
+fails refreshes before any outbound request; there is no default source. Public
+requests cannot select or change the source.
 
 Prepare a fresh, validated source document in a new temporary file; this command
 does not change KV or deploy anything:
 
 ```sh
-npm run prepare-seed -- /tmp/fray-registry-seed.json
+UPSTREAM_URL=https://publisher.example.org/watchlist.json \
+  npm run prepare-seed -- /tmp/fray-registry-seed.json
 ```
 
-It creates the file exclusively and prints only the revision and expiry. Upload
-that exact file and deploy promptly before the document expires:
+The seed command reads `UPSTREAM_URL` from its process environment; use the same
+URL as the Worker variable. It creates the file exclusively and prints only the
+revision and expiry. Upload that exact file and deploy promptly before it expires:
 
 ```sh
 npx wrangler kv key put --binding REGISTRY --remote watchlist:v1 --path /tmp/fray-registry-seed.json

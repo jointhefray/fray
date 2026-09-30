@@ -14,9 +14,8 @@ keys at runtime. Do not submit real ad captures, browsing history, account
 credentials, signing keys, deployment identifiers or production data.
 
 Run the checks in the root README and the tests for each affected Python package.
-Use an isolated Redis instance for collector tests. The Docker demo verifies
-issuance, encrypted delivery and collector behavior together. Format JavaScript
-and TypeScript with `npm run format`.
+CI also builds the issuer and OHTTP Docker images. Format JavaScript and
+TypeScript with `npm run format`.
 
 Dependencies are declared per package with committed npm lockfiles. Keep changes
 focused and explain new dependencies. Generated builds, local environments and

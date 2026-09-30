@@ -26,7 +26,7 @@ With independent operators, the relay sees the client IP but not report contents
 
 A relay has one configured gateway. Client paths, queries, headers and body fields cannot select another upstream. Redirects are not followed. Cookies, authorization, `Forwarded`, `X-Forwarded-For`, client user-agent strings and request IDs are not copied downstream. The response likewise has an explicit header allowlist.
 
-The encrypted inner request targets a fixed logical report endpoint. It cannot make the gateway an arbitrary HTTP proxy. Envelopes are limited to 8 KiB; transport overhead has its own bounded allowance. HTTP errors, oversized bodies and timeouts fail closed. No direct-to-collector fallback is permitted.
+The encrypted inner request targets a fixed logical report endpoint. It cannot make the gateway an arbitrary HTTP proxy. Envelopes are limited to 8064 bytes, leaving 128 bytes within the 8 KiB application-body limit for the gateway wrapper; transport overhead has its own bounded allowance. HTTP errors, oversized bodies and timeouts fail closed. No direct-to-collector fallback is permitted.
 
 ## Keys
 
@@ -40,4 +40,4 @@ Gateway private keys belong only at the gateway. Persist them across restarts; d
 - [Cloudflare Worker](../ohttp/cloudflare/): relay adapter. Follow its egress instructions; ordinary platform fetch behavior can add client IP headers.
 - [Python](../ohttp/python/): opaque relay, with optional Docker. It uses the same Node/TypeScript gateway; relay code never needs gateway private keys or a crypto library.
 
-The local compose stack runs all roles together to exercise the code. It is not an independently operated production deployment. Review the package-specific configuration and dependency notes before deployment.
+Review the package-specific configuration and dependency notes before deployment. Relay and gateway operators must be independent to establish the stated separation of client IPs from report contents.

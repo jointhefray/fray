@@ -15,19 +15,12 @@ eligible reports using blind-signed tokens and Oblivious HTTP (OHTTP).
 | OHTTP relay | [Cloudflare Worker](ohttp/cloudflare/) · [Node](ohttp/typescript/) · [Python](ohttp/python/) | Forward encrypted requests to a fixed gateway without forwarding client identity headers. |
 | OHTTP gateway | [TypeScript](ohttp/typescript/) | Decrypt reports and forward them to a private collector, or run a discard-only transport test. |
 | Authorization registry | [Cloudflare Worker](registry/cloudflare/) | Publish a validated public watchlist from a scheduled snapshot. |
-| Example collector | [Node and Redis](examples/collector/) | Exercise token verification, replay rejection, report validation and review grouping. |
 | Protocol contracts | [Specifications and JSON schemas](spec/) | Define consent, report contents, authorization rules and transport behavior. |
 
-This repository contains the server components, protocol contracts and test
-tools. The extension collection SDK is not included in this release. The OHTTP
-client helper exists to exercise the transport; it does not extract ads, access
-browser sessions or implement extension collection.
-
-The components share protocol schemas and interoperability tests, so they are
-maintained in one repository. Packages have separate manifests and lockfiles and
-can be built individually. Running them from one checkout does not require
-deploying them together: relay and gateway operators must be independent for the
-OHTTP trust split to hold.
+Each package has its own manifest and lockfile and can be built individually.
+Browser ad collection is outside this repository. The OHTTP client helper
+encrypts and sends reports; it does not extract ads or access browser sessions.
+Relay and gateway operators must be independent for the OHTTP trust split to hold.
 
 ## How reporting works
 
@@ -71,50 +64,16 @@ npm run format:check
 ```
 
 These commands cover the Node issuer, OHTTP services and registry. The Python
-package READMEs document virtual environments, tests and type checks. Collector
-integration tests require an isolated Redis instance:
+package READMEs document virtual environments, tests and type checks. Component
+READMEs also provide standalone Docker build and run commands where supported.
 
-```sh
-REDIS_URL=redis://127.0.0.1:6379 npm run test:collector
-```
+## Deploying the services
 
-The collector test command fails if Redis is unavailable; it does not silently
-skip the integration tests. Do not point it at a shared or production database.
-
-## Local interoperability demo
-
-```sh
-docker compose up --build -d
-docker compose run --build --rm demo
-docker compose down
-```
-
-The demo issues three tokens, sends fictional reports through the encrypted
-relay/gateway path, and verifies collector triage and quorum behavior. It uses
-explicit demo authentication and locally generated keys. Host ports bind to
-loopback. All roles run on one machine, so the demo verifies interoperability
-and does not provide the independence required for a production deployment.
-
-## Public integration endpoints
-
-| Role | Endpoint |
-| --- | --- |
-| Authorization watchlist | <https://registry.jointhefray.org/v1/watchlist.json> |
-| Adpocalypse issuer discovery | <https://adpocalypse.net/.well-known/fray.json> |
-| Issuer public keys | <https://adpocalypse.net/.well-known/jwks.json> |
-| Authenticated issuance | `POST https://adpocalypse.net/fray/issue` |
-| OHTTP relay | `POST https://ohttp.jointhefray.org/ohttp` |
-| Gateway public configuration | <https://inbound.jointhefray.org/ohttp-keys> |
-
-The public inbound currently decrypts and discards reports. Its encrypted HTTP
-200 confirms transport delivery only: it does not verify or redeem tokens,
-persist reports or connect to a collector. Use fictional data for integration
-tests. Gateway public keys must be authenticated through a trusted release or
-configuration channel, rather than accepted from an arbitrary relay.
-
-Deployment examples contain operator placeholders. Supply your own accounts,
-domains, storage and secrets before deploying. The [OHTTP documentation](ohttp/)
-and component READMEs describe operational requirements and implementation limits.
+Follow each component's README to configure your issuer, relay, gateway or
+registry. Supply the account, domains, storage and secrets for your deployment.
+The [OHTTP documentation](ohttp/) explains the trust boundaries and key
+distribution requirements. Clients must authenticate gateway public keys through
+a trusted release or configuration channel.
 
 ## Contributing and security
 

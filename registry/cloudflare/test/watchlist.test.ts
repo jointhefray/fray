@@ -30,7 +30,7 @@ test('independent validator accepts the public schema, optional fields, offsets 
   assert.equal(watchlistExpired(doc, NaN), true);
 });
 
-test('schema array and string limits reject values the excluded SDK previously tolerated', () => {
+test('schema array and string limits reject out-of-bounds values', () => {
   for (const change of [
     { brand_terms: Array(11).fill('Example') },
     { brand_terms: ['ab'] },

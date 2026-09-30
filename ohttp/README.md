@@ -1,10 +1,10 @@
 # Oblivious HTTP
 
-The relay forwards encrypted reports. The gateway decrypts them and submits them to Fray's collector. The relay has no decryption keys; the gateway receives the relay's connection rather than the extension's connection.
+The relay forwards encrypted reports. The gateway decrypts them and submits them to a configured collector. The relay has no decryption keys; the gateway receives the relay's connection rather than the client's connection.
 
 ```
-Extension → Relay → Gateway → Collector
-            sees IP   sees report
+Client → Relay → Gateway → Collector
+         sees IP   sees report
 ```
 
 This is [RFC 9458 OHTTP](https://www.rfc-editor.org/rfc/rfc9458.html) carrying [RFC 9292 Binary HTTP](https://www.rfc-editor.org/rfc/rfc9292.html).
@@ -36,7 +36,7 @@ The only inner operation is `POST https://collector.fray.invalid/submit` with JS
 ```ts
 import { FrayOhttpClient } from './ohttp/typescript/src/client.js';
 
-// Public keys obtained through the partner's authenticated extension configuration.
+// Public keys obtained through the application's trusted configuration.
 const transport = FrayOhttpClient.create(publicGatewayConfiguration);
 const response = await transport.send(reportWithOneUseToken, {
   relayUrl: 'https://relay.example.org/ohttp',
@@ -48,17 +48,17 @@ if (!response.ok) {
 
 The caller remains responsible for consent, report minimisation, token issuance and one-use token storage. The class encrypts with fresh HPKE context for every submission and decrypts the matching response. P-256, HKDF-SHA256 and AES-128-GCM are used through [`ohttp-ts`](https://github.com/thibmeu/ohttp-ts) and [`hpke`](https://github.com/panva/hpke); there is no custom HPKE implementation here.
 
-This transport client is included for protocol integration and tests. The browser
-collection SDK, extraction and extension integration are not part of this release.
+The transport client accepts an already prepared report. Browser ad extraction
+and extension integration belong to the calling application.
 
-`FrayOhttpClient.discover(options)` obtains public keys through the relay for local demonstrations. **Authenticate or pin the gateway public configuration in a production extension.** A malicious relay could substitute its own public key if it also controls unverified key discovery. Publish the same configuration to the whole client population, with a planned rotation schedule; do not issue per-user gateway keys.
+`FrayOhttpClient.discover(options)` obtains public keys through the relay for local demonstrations. **Authenticate or pin the gateway public configuration in production clients.** A malicious relay could substitute its own public key if it also controls unverified key discovery. Publish the same configuration to the whole client population, with a planned rotation schedule; do not issue per-user gateway keys.
 
 ## Deployment boundaries
 
-Relay and gateway need separate, non-colluding operators for the IP/content split to provide its intended privacy benefit. Running the complete Docker example on one machine exercises the protocol; it does not create that separation. A common CDN, tracing system or log pipeline can also reconnect the two sides. Neither the protocol nor these examples prevents timing/size correlation or collusion.
+Relay and gateway need separate, non-colluding operators for the IP/content split to provide its intended privacy benefit. Running both roles on one machine does not create that separation. A common CDN, tracing system or log pipeline can also reconnect the two sides. Neither the protocol nor these implementations prevents timing/size correlation or collusion.
 
 Application access logging is disabled. Disable request/body capture in the surrounding proxy, runtime and monitoring configuration too. HTTPS is required outside an explicitly enabled local HTTP demo. The Cloudflare adapter uses TLS sockets because ordinary Workers `fetch()` can add the visitor's IP to outbound requests; its [README](cloudflare/README.md) explains the resulting gateway constraints.
 
-The gateway stores private key material only on its side. `keygen` creates a file with mode 0600 and refuses to overwrite it. To rotate, distribute a new public configuration through authenticated extension updates and retain old private keys during the overlap window. The stored file supports an array of keys with distinct IDs. Rotation and key publication are operator work, not automated by this example.
+The gateway stores private key material only on its side. `keygen` creates a file with mode 0600 and refuses to overwrite it. To rotate, distribute a new public configuration through authenticated client updates and retain old private keys during the overlap window. The stored file supports an array of keys with distinct IDs. Rotation and key publication are not automated by this example.
 
 OHTTP does not prevent replay: the collector's token spent-set remains necessary. This integration and its OHTTP library have not received an independent security audit. Tests exercise ciphertext round trips, a published RFC vector, forwarding boundaries, malformed input, limits, and timeouts; they are not a deployment audit.
