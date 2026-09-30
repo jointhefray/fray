@@ -170,8 +170,7 @@ export function createPipeline({ redis, issuers, jwksCache, watchlist, validateE
 
     // 7. Quorum: count distinct-token sightings of (brand, creative, country,
     //    UTC day). K approximates K distinct clients — enforced economically
-    //    (quota × account cost), not cryptographically; protocol.md §7 says to
-    //    state that wherever K is cited, so: stated.
+    //    (quota × account cost), not cryptographically (protocol.md §7).
     const day = envelope.observed_hour.slice(0, 10);
     const chash = envelope.v === 2 ? lookupReportHash(envelope) : creativeHash(creative.title);
     const quorumKey = `q:${envelope.brand}|${chash}|${country}|${day}`;

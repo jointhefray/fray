@@ -243,7 +243,7 @@ test('schema violations are rejected before anything else', { skip }, async () =
 });
 
 test(
-  'removed destination fields are rejected before token consumption in both versions',
+  'unsupported destination fields are rejected before token consumption in both versions',
   { skip },
   async () => {
     for (const makeReport of [makeEnvelope, makeLookupEnvelope]) {
@@ -363,7 +363,7 @@ test('v2 whole-envelope size rejection happens before token consumption', { skip
 });
 
 test(
-  'expired local watchlist stops v2 acceptance without changing legacy v1 handling',
+  'expired local watchlist stops v2 acceptance without changing v1 sighting handling',
   { skip },
   async () => {
     const expired = JSON.parse(readFileSync(collectorConfig.watchlistPath, 'utf8'));
@@ -398,9 +398,8 @@ test(
 );
 
 test('first sighting of a new creative pushes exactly one triage item', { skip }, async () => {
-  // Triage from sighting ONE (protocol.md §6 step 7, §6.1): envelopes are
-  // safe for human eyes by construction, so analysts see candidates for
-  // review before any quorum.
+  // Triage starts at the first sighting (protocol.md §6 step 7, §6.1).
+  // K prioritizes review; it does not gate access to the first report.
   const title = `Example Fashion First Sight ${runId}`;
   const expectedHash = createHash('sha256')
     .update(title.normalize('NFC').toLowerCase())

@@ -44,7 +44,7 @@ function lookup() {
   };
 }
 
-test('schema accepts both versions without broadening the legacy v1 field set', () => {
+test('schema accepts both versions without broadening the v1 sighting field set', () => {
   assert.equal(validate(legacy()), true);
   assert.equal(validate({ ...legacy(), platform: 'youtube.com', surface: 'feed' }), true);
   assert.equal(validate(lookup()), true);
@@ -56,13 +56,13 @@ test('schema accepts both versions without broadening the legacy v1 field set', 
   assert.equal(validate({ ...legacy(), creative: null }), false);
 });
 
-test('both creative schemas require only title and reject the removed destination field', () => {
+test('both creative schemas require only title and reject the unsupported destination field', () => {
   for (const report of [legacy(), lookup()]) {
     report.creative = { title: 'An ad without a click URL' };
     assert.equal(validate(report), true);
 
     report.creative.final_domain = 'destination.example';
-    assert.equal(validate(report), false, 'removed fields remain schema errors');
+    assert.equal(validate(report), false, 'unsupported fields are schema errors');
 
     report.creative = { body: 'Body alone is not a usable creative' };
     assert.equal(validate(report), false);

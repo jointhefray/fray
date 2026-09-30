@@ -1,11 +1,9 @@
 // Per-client, per-UTC-day issuance quota (protocol.md §5: DAILY_QUOTA = 64
 // blinded messages/client/day; hard 429 beyond it).
 //
-// In-memory on purpose: the reference issuer is a single process and the quota
-// resets at UTC midnight anyway. Production wants Redis (INCRBY on a
-// `quota:<client>:<YYYY-MM-DD>` key with a ~48h EXPIRE) so the quota survives
-// restarts and is shared across replicas — otherwise a restart hands every
-// client a fresh day.
+// This default store is process-local and loses usage on restart. Production
+// integrations must supply a durable QuotaStore shared by replicas, with an
+// atomic limit check and reservation of the entire batch.
 
 export interface QuotaStore {
   /** Atomically reserve a whole batch. Return false without changing the counter. */

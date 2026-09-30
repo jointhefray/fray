@@ -5,9 +5,9 @@ function decides who can draw tokens; `PrivacyTokenIssuer` handles batch validat
 daily quotas, monthly keys and RFC 9474 blind signing. It sees blinded messages,
 never the random token values that the client later submits with a report.
 
-Requires Node.js 24+. Package name: `@fray/token-issuer` (local source package;
-no npm publication is implied). The [Python implementation](../python/) has the
-same wire contract. See the [protocol](../../spec/protocol.md).
+Requires Node.js 24+. Package name: `@fray/token-issuer`.
+The [Python implementation](../python/) has the same wire contract.
+See the [protocol](../../spec/protocol.md).
 
 ## Add it to your backend
 
@@ -124,10 +124,6 @@ npm run typecheck
 npm test
 npm run build
 ```
-
-Tests cover real blind → issue → finalize → verify, auth rejection, malformed and
-oversized batches, atomic concurrent quotas, UTC rollover, persisted keys,
-concurrent key creation, and current/previous epoch JWKS publication.
 
 MIT OR Apache-2.0. Copyright 2026 Marcode Ltd.
 [MIT](../../LICENSE-MIT) · [Apache 2.0](../../LICENSE-APACHE)

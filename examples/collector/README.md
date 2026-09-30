@@ -85,9 +85,9 @@ base. JWKS fetching is a reference cache without timeout/body bounds or
 concurrent-refresh coordination; harden that client before production use.
 
 The bundled `watchlist.sample.json` is a fictional, fixed-date fixture for the
-v1 demo. It is expired and therefore cannot authorize v2 reports. For v2, set
-`WATCHLIST_PATH` to a current reviewed watchlist before startup. The file is read
-once at startup; restart the collector after updating it. Do not extend an old
+v1 demo. For v2, set `WATCHLIST_PATH` to a current reviewed watchlist before startup;
+expired lists are rejected. The file is read once at startup; restart the
+collector after updating it. Do not extend an old
 list's expiry to keep reporting active. The v1 path checks version and brand
 membership; the v2 path additionally enforces expiry and the observed-domain match.
 
@@ -101,14 +101,9 @@ docker run --rm -d -p 127.0.0.1:6379:6379 redis:7-alpine
 REQUIRE_REDIS=1 REDIS_URL=redis://127.0.0.1:6379 npm test
 ```
 
-The integration test creates an in-test issuer keypair, serves it from a stub
-JWKS HTTP server, and plays the pipeline end-to-end: valid envelope accepted →
-replay rejected (`token_reused`) → tampered signature rejected → schema
-violations rejected → first sighting of a new creative pushes exactly one
-triage item (and a second pushes none) → third distinct sighting of one
-creative enqueues exactly one candidate. Use an isolated Redis instance: these
-tests write test envelopes and queue records. `REQUIRE_REDIS=1` makes an unavailable
-Redis fail the run. Without that setting, the integration suite explicitly skips
+Use an isolated Redis instance: these tests write fictional envelopes and queue
+records. `REQUIRE_REDIS=1` makes an unavailable Redis fail the run. Without that
+setting, the integration suite explicitly skips
 when Redis is unavailable; schema tests still run.
 
 ## License

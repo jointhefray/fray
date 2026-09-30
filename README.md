@@ -18,16 +18,10 @@ eligible reports using blind-signed tokens and Oblivious HTTP (OHTTP).
 | Example collector | [Node and Redis](examples/collector/) | Exercise token verification, replay rejection, report validation and review grouping. |
 | Protocol contracts | [Specifications and JSON schemas](spec/) | Define consent, report contents, authorization rules and transport behavior. |
 
-This repository contains the server components, protocol contracts and test
-tools. The extension collection SDK is not included in this release. The OHTTP
-client helper exists to exercise the transport; it does not extract ads, access
-browser sessions or implement extension collection.
-
-The components share protocol schemas and interoperability tests, so they are
-maintained in one repository. Packages have separate manifests and lockfiles and
-can be built individually. Running them from one checkout does not require
-deploying them together: relay and gateway operators must be independent for the
-OHTTP trust split to hold.
+Each package has its own manifest and lockfile and can be built individually.
+Browser ad collection is outside this repository. The OHTTP client helper
+encrypts and sends reports; it does not extract ads or access browser sessions.
+Relay and gateway operators must be independent for the OHTTP trust split to hold.
 
 ## How reporting works
 
@@ -95,26 +89,13 @@ explicit demo authentication and locally generated keys. Host ports bind to
 loopback. All roles run on one machine, so the demo verifies interoperability
 and does not provide the independence required for a production deployment.
 
-## Public integration endpoints
+## Deploying the services
 
-| Role | Endpoint |
-| --- | --- |
-| Authorization watchlist | <https://registry.jointhefray.org/v1/watchlist.json> |
-| Adpocalypse issuer discovery | <https://adpocalypse.net/.well-known/fray.json> |
-| Issuer public keys | <https://adpocalypse.net/.well-known/jwks.json> |
-| Authenticated issuance | `POST https://adpocalypse.net/fray/issue` |
-| OHTTP relay | `POST https://ohttp.jointhefray.org/ohttp` |
-| Gateway public configuration | <https://inbound.jointhefray.org/ohttp-keys> |
-
-The public inbound currently decrypts and discards reports. Its encrypted HTTP
-200 confirms transport delivery only: it does not verify or redeem tokens,
-persist reports or connect to a collector. Use fictional data for integration
-tests. Gateway public keys must be authenticated through a trusted release or
-configuration channel, rather than accepted from an arbitrary relay.
-
-Deployment examples contain operator placeholders. Supply your own accounts,
-domains, storage and secrets before deploying. The [OHTTP documentation](ohttp/)
-and component READMEs describe operational requirements and implementation limits.
+Follow each component's README to configure your issuer, relay, gateway or
+registry. Supply the account, domains, storage and secrets for your deployment.
+The [OHTTP documentation](ohttp/) explains the trust boundaries and key
+distribution requirements. Clients must authenticate gateway public keys through
+a trusted release or configuration channel.
 
 ## Contributing and security
 

@@ -6,8 +6,7 @@ Include the affected commit, a minimal reproduction with fictional data, the
 expected behavior and the potential impact. Do not include live credentials,
 private keys, personal information or real browsing reports.
 
-The initial public codebase is maintained on `main`. Fixes are published there;
-no long-term support branch is currently offered.
+Security fixes are published on `main`. No long-term support branch is offered.
 
 These are reference implementations. Publishing the source and passing its tests
 do not constitute an independent security audit. Production operators must
@@ -21,5 +20,4 @@ correlatable platform values as described in the protocol. Do not promise full
 anonymity from transport encryption alone.
 
 Please avoid testing against public infrastructure without prior coordination.
-Use local services and fictional data for reproductions. A report to the public
-discard endpoint is not a test of collector acceptance or token redemption.
+Use local services and fictional data for reproductions.

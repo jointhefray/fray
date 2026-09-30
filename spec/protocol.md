@@ -77,14 +77,13 @@ Clients and the collector use `@cloudflare/blindrsa-ts`
   https://{issuer-host}/.well-known/jwks.json
   ```
 
-  Adpocalypse publishes issuer discovery at `https://adpocalypse.net/.well-known/fray.json`
-  and public keys at `https://adpocalypse.net/.well-known/jwks.json`. Issuance remains
-  `https://adpocalypse.net/fray/issue`; the issuer base URL is
-  `https://adpocalypse.net/fray`. The existing `/fray/.well-known/jwks.json` alias
-  returns the same keys. Keep `token.issuer` as
-  `adpocalypse.net`. The example collector appends `/.well-known/jwks.json` to
-  the trusted base URL in `ISSUERS`, so use `adpocalypse.net=https://adpocalypse.net`
-  or `adpocalypse.net=https://adpocalypse.net/fray`.
+  An issuer may be mounted beneath a path, such as
+  `https://issuer.partner.example/fray`. The example collector appends
+  `/.well-known/jwks.json` to the trusted base URL in `ISSUERS`. For that
+  deployment, configure
+  `ISSUERS="issuer.partner.example=https://issuer.partner.example/fray"` and use
+  `issuer.partner.example` as the token's issuer name. The issuer name must match
+  the collector's allowlist entry; a report cannot supply an arbitrary JWKS URL.
 
   Standard JWKS document; each key carries `kid`, `use: "sig"`, and
   `alg: "RSABSSA-SHA384-PSS-Deterministic"` (a private-use value — blind RSA has no
@@ -98,7 +97,7 @@ Clients and the collector use `@cloudflare/blindrsa-ts`
 
 ### 3.1 Fray issuer discovery
 
-`/.well-known/fray.json` is the Fray deployment's public JSON discovery convention.
+`/.well-known/fray.json` is the public JSON discovery convention for Fray issuers.
 The reusable issuer packages expose `/issue` and `/.well-known/jwks.json`; the
 host application supplies discovery when required.
 It identifies `protocol: "fray-blind-rsa-v1"` and
@@ -141,7 +140,6 @@ Authorization: (partner's existing client auth)
 | `KEY_ACCEPT_WINDOW`          | current + previous epoch       | Tolerates clients offline across rotation.                                                                                                                                                                                                                                                                                                                                                        |
 | `SPENT_SET_TTL`              | 70 days                        | Outlives the acceptance window for that key; then the key is dead and the set is garbage.                                                                                                                                                                                                                                                                                                         |
 | `K` (auto-escalation quorum) | 3 distinct tokens              | At K sightings of the same (brand, creative, country, day) a candidate escalates automatically. Below K, sightings sit in the analyst triage queue from the first one: cloaked and targeted scam ads are often visible only to the users they target, so a single sighting must be reviewable. V2 reports contain correlatable page-scoped lookup values; access and retention must reflect that. |
-| `COOLING_OFF`                | 7 days                         | Intended source-curation policy: operators delay using new authorization additions to suppress detection. The supplied issuer, registry publisher and collector do not enforce this delay. |
 | `RAW_RETENTION`              | 90 days                        | Accepted envelopes; aggregates and case files persist.                                                                                                                                                                                                                                                                                                                                            |
 
 Partners may lower `BATCH_SIZE`/`DAILY_QUOTA`; raising them above these values takes the
@@ -241,8 +239,9 @@ Collector rejection details exist for local debugging. The OHTTP gateway returns
   and click-URL keyword redaction preserves unrelated evidence and does not remove
   the correlation properties of retained platform data. Redaction is not a claim
   that arbitrary opaque or encoded platform values contain no user information.
-- Traffic analysis and relay/gateway collusion remain possible. When Fray operates
-  both components, independent operation is not established and must be disclosed.
+- Traffic analysis and relay/gateway collusion remain possible. A single operator
+  controlling both components can associate client connections with report
+  contents; this does not provide the independent-operator trust split.
 - A malicious shipped extension can exfiltrate data outside this protocol. The
   partner's client code remains a trust boundary.
 - K distinct tokens approximates K distinct clients; it is enforced economically

@@ -57,9 +57,9 @@ docker run --rm -p 8789:8789 \
 
 Both services run as the unprivileged `node` user. The key volume is created with that user's ownership. Key generation refuses to replace an existing file; subsequent starts reuse the saved keys.
 
-See the [OHTTP overview](../README.md) for the trust model, key authentication and extension client API.
+See the [OHTTP overview](../README.md) for the trust model, key authentication and protocol client API.
 
-## Temporary inbound sink on Heroku
+## Discard-only gateway
 
 The `inbound` service is an OHTTP gateway that decrypts a bounded report and
 discards it. It validates the inner method, fixed target, headers, JSON object and
@@ -68,6 +68,8 @@ no tokens, writes no report data, and has no database dependency. Its generic
 encrypted HTTP 200 means the request reached the sink; it does not mean a report
 was retained or accepted by a collector. Invalid logical requests receive encrypted
 errors, and malformed outer requests fail before decryption.
+
+### Heroku setup
 
 Deploy **this directory as the Heroku application root**, with its `package.json`,
 `package-lock.json`, `Procfile`, `tsconfig.json` and `src/` directory. The Node.js
@@ -98,10 +100,10 @@ Key arrays support distinct IDs for a planned rotation overlap.
 | `GET /ohttp-keys` | Publish RFC-formatted public configuration only. |
 | `GET /healthz` | Return `ok` for process liveness. |
 
-For `inbound.jointhefray.org`, configure a Heroku custom domain with TLS and a
-DNS-only record. The Cloudflare Worker at `ohttp.jointhefray.org` must forward to
-`https://inbound.jointhefray.org/ohttp`; its TLS socket cannot connect to a
-Cloudflare-proxied gateway. Authenticate or pin the published public configuration
-in clients. The application logs no report bodies or client IPs; platform router
+Configure a custom hostname such as `gateway.example.org` with TLS. When using
+the Cloudflare relay, keep the gateway's DNS record DNS-only and set the relay's
+`GATEWAY_URL` to `https://gateway.example.org/ohttp`: the TLS socket cannot connect
+to a Cloudflare-proxied gateway. Authenticate or pin the public configuration in
+clients. The application logs no report bodies or client IPs; platform router
 logging is controlled outside this process. Hosting both sides under the same
 operator does not establish independent relay/gateway operation.

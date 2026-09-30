@@ -117,9 +117,9 @@ const triage = (await redis.lRange('triage', 0, -1)).map((t) => JSON.parse(t));
 const candidates = (await redis.lRange('candidates', 0, -1)).map((c) => JSON.parse(c));
 await redis.quit();
 
-// The FIRST sighting queued this creative for analyst triage (protocol.md
-// §6.1: envelopes are safe for human eyes by construction; K prioritizes,
-// it does not gate review). lPush prepends, so index 0 is the newest.
+// The first sighting queued this creative for analyst triage (protocol.md §6.1).
+// K prioritizes review; it does not gate the first report. lPush prepends,
+// so index 0 is the newest.
 const creativeHash = createHash('sha256')
   .update(creative.title.normalize('NFC').toLowerCase())
   .digest('hex');

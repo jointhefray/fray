@@ -5,8 +5,8 @@ Issue anonymous reporting tokens from your existing Python backend. Supply a
 monthly keys and RFC 9474 blind signing. The [TypeScript package](../typescript/)
 implements the same [protocol](../../spec/protocol.md).
 
-Requires Python 3.11+. The local package is `fray-token-issuer`; no PyPI publication
-is implied. Importing it does not generate keys or start a server.
+Requires Python 3.11+. Package name: `fray-token-issuer`.
+Importing it does not generate keys or start a server.
 
 ## Add it to your backend
 
@@ -127,8 +127,6 @@ Tests perform client-side blinding and finalization, then verify with the indepe
 RSA-PSS verifier in `cryptography`. Test-only PSS encoding follows RFC 8017;
 production clients should use a maintained RFC 9474 implementation such as
 `@cloudflare/blindrsa-ts`, following the [token contract](../../spec/protocol.md#2-cryptographic-suite).
-Tests also cover auth rejection, validation without quota loss, concurrent quotas,
-UTC rollover, key races, persisted keys and current/previous epoch JWKS publication.
 
 MIT OR Apache-2.0. Copyright 2026 Marcode Ltd.
 [MIT](../../LICENSE-MIT) · [Apache 2.0](../../LICENSE-APACHE)

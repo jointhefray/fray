@@ -1,17 +1,13 @@
 # Watchlist format v1
 
-The watchlist is the published, versioned list of brands Fray is currently watching.
+The watchlist is the published, versioned list of watched brands.
 The JSON format is `v: 1`; envelope versions have separate matching rules
 below. Unmatched candidates are not looked up or submitted by the reporting flow.
 Publishing the list makes the reporting scope visible to users and partners.
 
-Published at:
-
-```
-https://registry.jointhefray.org/v1/watchlist.json        (configured live endpoint)
-```
-
-Machine-validated by [`watchlist.schema.json`](watchlist.schema.json).
+The public Fray watchlist is available at
+[`registry.jointhefray.org/v1/watchlist.json`](https://registry.jointhefray.org/v1/watchlist.json).
+Its format is defined by [`watchlist.schema.json`](watchlist.schema.json).
 
 ## Example
 
@@ -118,26 +114,23 @@ Fetches carry no credentials or explicit user identifiers. Watchlist responses
 are validated before persistence. This cache stores public matching scope; it
 must not store Google page tokens, lookup responses, or client browsing activity.
 
-## Fray-hosted publication
+## Publication
 
-The canonical public endpoint is
-`https://registry.jointhefray.org/v1/watchlist.json`. A Cloudflare Worker serves a
-KV snapshot refreshed every 15 minutes from the Adpocalypse public
-authorization source. Visitor requests only read the snapshot and never trigger
-a source fetch. No token, account credential or sighting report is accepted by
-the registry.
+Serve the watchlist as public JSON over HTTPS, without requiring account
+credentials or reporting tokens. Validate documents before publication and
+preserve the source `version`, `published` and `expires` values when distributing
+snapshots. An unavailable source must not extend a snapshot's lifetime. HTTP
+caching must not outlive `expires`.
 
-The publisher validates the snapshot and preserves `version`, `published` and
-`expires`. An unavailable source cannot extend the snapshot's lifetime; missing,
-invalid or expired snapshots return `503`. HTTP caching cannot outlive `expires`.
-KV propagation is eventual, so a still-valid earlier revision may briefly be
-served. The client cache policy above applies independently of the publisher cache.
+The [reference publisher](../registry/cloudflare/) implements scheduled snapshot
+refreshes and returns `503` for missing, invalid or expired data. Its client
+request path reads only the stored snapshot, so visitor headers are not forwarded
+to the source. The client cache policy above applies independently of publisher
+caching and replication delays.
 
-## Size discipline
+## Size limits
 
-The list stays small on purpose (hundreds of entries, not tens of thousands): every entry
-enlarges client-side work and the surface a partner has to defend to their users.
-The intended operator curation policy is to add entries when a brand is actively
-targeted or requests watching, then remove them after six quiet months. The
-supplied publisher validates and serves snapshots; it does not assess targeting
-activity or enforce that removal schedule.
+The schema allows at most 10,000 entries. Each entry allows up to 10 brand terms,
+50 authorized domains and 1,000 authorized advertiser IDs. The reference publisher
+also limits the complete UTF-8 document to 1 MiB. A document must satisfy both
+the schema and the publisher's byte limit.
