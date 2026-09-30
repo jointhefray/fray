@@ -1,0 +1,89 @@
+# Local demonstration only. Independent operators are required for the OHTTP trust split.
+services:
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis-data:/data
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+
+  issuer:
+    build: ./token-issuer/typescript
+    ports:
+      - "127.0.0.1:8081:8081"
+    environment:
+      FRAY_LOCAL_DEMO: "1"
+      LOCAL_DEMO_TOKEN: local-fray-demo-only
+      HOST: 0.0.0.0
+      PORT: "8081"
+      KEYS_DIR: /app/keys
+    volumes:
+      - issuer-keys:/app/keys
+
+  gateway-keys:
+    build: ./ohttp/typescript
+    entrypoint: ["sh", "-c", "test -f /app/keys/gateway.json || node dist/keygen.js /app/keys/gateway.json"]
+    volumes:
+      - gateway-keys:/app/keys
+
+  gateway:
+    build: ./ohttp/typescript
+    command: ["node", "dist/gateway-server.js"]
+    environment:
+      PORT: "8789"
+      OHTTP_KEY_FILE: /app/keys/gateway.json
+      COLLECTOR_URL: http://collector:8082/v1/events
+      ALLOW_INSECURE_HTTP: "true"
+    volumes:
+      - gateway-keys:/app/keys:ro
+    depends_on:
+      gateway-keys:
+        condition: service_completed_successfully
+      collector:
+        condition: service_started
+
+  relay:
+    build: ./ohttp/typescript
+    ports:
+      - "127.0.0.1:8083:8788"
+    environment:
+      GATEWAY_URL: http://gateway:8789/ohttp
+      ALLOW_INSECURE_HTTP: "true"
+    depends_on:
+      - gateway
+
+  collector:
+    build:
+      context: .
+      dockerfile: examples/collector/Dockerfile
+    environment:
+      REDIS_URL: redis://redis:6379
+      ISSUERS: issuer.partner.example=http://issuer:8081
+    depends_on:
+      redis:
+        condition: service_healthy
+      issuer:
+        condition: service_started
+
+  demo:
+    profiles: ["demo"]
+    build:
+      context: .
+      dockerfile: examples/demo/Dockerfile
+    environment:
+      ISSUER_URL: http://issuer:8081
+      RELAY_URL: http://relay:8788
+      REDIS_URL: redis://redis:6379
+      PARTNER_AUTH: Bearer local-fray-demo-only
+    depends_on:
+      - relay
+      - issuer
+
+volumes:
+  redis-data:
+  issuer-keys:
+  gateway-keys:

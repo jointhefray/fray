@@ -1,0 +1,17 @@
+name = "fray-ohttp-relay"
+# Select your own account when deploying; no production account is configured here.
+# account_id = "YOUR_CLOUDFLARE_ACCOUNT_ID"
+main = "src/index.ts"
+compatibility_date = "2026-09-08"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = false
+preview_urls = false
+# Add a custom domain you control before deploying.
+# routes = [{ pattern = "ohttp.example.org", custom_domain = true }]
+
+# A DNS-only TLS endpoint outside Cloudflare's IP ranges. See README.
+[vars]
+GATEWAY_URL = "https://gateway.example.org/ohttp"
+
+[observability]
+enabled = false

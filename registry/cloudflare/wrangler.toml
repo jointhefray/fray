@@ -1,0 +1,19 @@
+name = "fray-registry"
+# account_id = "YOUR_CLOUDFLARE_ACCOUNT_ID"
+main = "src/index.ts"
+compatibility_date = "2026-09-08"
+workers_dev = false
+preview_urls = false
+# Add a custom domain you control before deploying.
+# routes = [{ pattern = "registry.example.org", custom_domain = true }]
+
+[[kv_namespaces]]
+binding = "REGISTRY"
+# Replace this placeholder with a namespace in your own account.
+id = "00000000000000000000000000000000"
+
+[triggers]
+crons = ["*/15 * * * *"]
+
+[observability]
+enabled = false

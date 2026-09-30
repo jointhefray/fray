@@ -1,0 +1,28 @@
+{
+  "name": "@fray/oss",
+  "version": "0.1.0",
+  "description": "Fray protocol and reference services: token issuers, OHTTP and public authorization registry",
+  "license": "(MIT OR Apache-2.0)",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "format": "prettier --write '**/*.{js,mjs,ts}'",
+    "format:check": "prettier --check '**/*.{js,mjs,ts}'",
+    "setup": "node scripts/packages.mjs ci",
+    "build": "node scripts/packages.mjs build",
+    "typecheck": "node scripts/packages.mjs typecheck",
+    "test": "node scripts/packages.mjs test",
+    "test:collector": "node scripts/collector-test.mjs",
+    "demo": "node scripts/demo.mjs"
+  },
+  "dependencies": {
+    "@cloudflare/blindrsa-ts": "0.4.6",
+    "redis": "^4.7.0"
+  },
+  "devDependencies": {
+    "prettier": "3.9.6"
+  }
+}
