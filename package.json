@@ -20,7 +20,7 @@
   },
   "dependencies": {
     "@cloudflare/blindrsa-ts": "0.4.6",
-    "redis": "^4.7.0"
+    "redis": "^6.2.1"
   },
   "devDependencies": {
     "prettier": "3.9.6"
