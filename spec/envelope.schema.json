@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://jointhefray.org/schemas/envelope.json",
-  "title": "Fray reports: creative sighting v1 or advertiser lookup v2",
+  "title": "Fray report envelope",
   "oneOf": [
     {
       "$ref": "#/$defs/v1"

@@ -7,6 +7,11 @@ preview_urls = false
 # Add a custom domain you control before deploying.
 # routes = [{ pattern = "registry.example.org", custom_domain = true }]
 
+[vars]
+# Required: set your trusted public HTTPS watchlist URL before deploying.
+# Empty configuration fails refreshes without making an outbound request.
+UPSTREAM_URL = ""
+
 [[kv_namespaces]]
 binding = "REGISTRY"
 # Replace this placeholder with a namespace in your own account.

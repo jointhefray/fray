@@ -14,15 +14,6 @@ jobs:
     timeout-minutes: 15
     env:
       WRANGLER_SEND_METRICS: 'false'
-    services:
-      redis:
-        image: redis:7-alpine
-        ports: ['6379:6379']
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 2s
-          --health-timeout 2s
-          --health-retries 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -38,9 +29,6 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
-      - run: npm run test:collector
-        env:
-          REDIS_URL: redis://127.0.0.1:6379
   python:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -71,7 +59,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - run: docker compose up --build -d
-      - run: docker compose run --build --rm demo
-      - if: always()
-        run: docker compose down -v
+      - name: Build TypeScript token issuer
+        run: docker build --tag fray-check-issuer-typescript token-issuer/typescript
+      - name: Build Python token issuer
+        run: docker build --tag fray-check-issuer-python token-issuer/python
+      - name: Build TypeScript OHTTP services
+        run: docker build --tag fray-check-ohttp-typescript ohttp/typescript
+      - name: Build Python OHTTP relay
+        run: docker build --tag fray-check-ohttp-python ohttp/python

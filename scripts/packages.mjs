@@ -17,8 +17,6 @@ const packages = [
   'registry/cloudflare',
 ];
 
-if (action === 'ci') packages.push('examples/collector');
-
 for (const name of packages) {
   const cwd = resolve(root, name);
   const pkg = JSON.parse(readFileSync(resolve(cwd, 'package.json'), 'utf8'));

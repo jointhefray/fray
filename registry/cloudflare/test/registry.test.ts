@@ -7,11 +7,11 @@ import {
   parseSnapshot,
   refreshSnapshot,
   SNAPSHOT_KEY,
-  UPSTREAM_URL,
   WATCHLIST_PATH,
   type Env,
 } from '../src/index.js';
 
+const SOURCE_URL = 'https://publisher.example.org/watchlist.json';
 const NOW = Date.parse('2026-09-30T12:00:00Z');
 const URL = `https://registry.jointhefray.org${WATCHLIST_PATH}`;
 const fixture = (overrides: Record<string, unknown> = {}) => ({
@@ -38,6 +38,7 @@ function storage(initial: string | null = null) {
   let body = initial;
   const writes: string[] = [];
   const env: Env = {
+    UPSTREAM_URL: SOURCE_URL,
     REGISTRY: {
       async get(key) {
         assert.equal(key, SNAPSHOT_KEY);
@@ -105,6 +106,7 @@ test('missing, expired, invalid and unavailable KV fail closed without an upstre
     assert.deepEqual(await result.json(), { error: 'registry unavailable' });
   }
   const env: Env = {
+    UPSTREAM_URL: SOURCE_URL,
     REGISTRY: {
       async get() {
         throw new Error('KV down');
@@ -137,6 +139,7 @@ test('cache lifetime never extends past source expiry and liveness does not requ
 test('HEAD, OPTIONS, unsupported methods and unknown paths are bounded read-only routes', async () => {
   let reads = 0;
   const env: Env = {
+    UPSTREAM_URL: SOURCE_URL,
     REGISTRY: {
       async get() {
         reads++;
@@ -168,10 +171,11 @@ test('HEAD, OPTIONS, unsupported methods and unknown paths are bounded read-only
 test('scheduled refresh uses a fixed source and static request headers, then stores validated public JSON', async () => {
   const body = JSON.stringify(fixture(), null, 2);
   const { env, writes } = storage();
+  env.UPSTREAM_URL = 'https://another-publisher.example.org/public/list.json';
   const worker = createRegistry({
     now: () => NOW,
     fetch: async (url, init) => {
-      assert.equal(url, UPSTREAM_URL);
+      assert.equal(url, env.UPSTREAM_URL);
       assert.equal(init?.method, 'GET');
       assert.equal(init?.redirect, 'manual');
       assert.deepEqual([...new Headers(init?.headers)], [['accept', 'application/json']]);
@@ -181,6 +185,42 @@ test('scheduled refresh uses a fixed source and static request headers, then sto
   });
   await worker.scheduled({}, env);
   assert.deepEqual(writes, [encode()]);
+});
+
+test('missing or unsafe source configuration never fetches or replaces the last valid snapshot', async () => {
+  let outbound = 0;
+  const worker = createRegistry({
+    now: () => NOW,
+    fetch: async () => {
+      outbound++;
+      throw new Error('Invalid source must not be fetched');
+    },
+  });
+  for (const value of [
+    undefined,
+    '',
+    'not a URL',
+    'http://publisher.example.org/list.json',
+    'https://user:secret@publisher.example.org/list.json',
+    'https://publisher.example.org/list.json?account=secret',
+    'https://publisher.example.org/list.json#fragment',
+    'https://publisher.example.org/line\nbreak',
+    'https://publisher.example.org\\other',
+    '/watchlist.json',
+  ]) {
+    const { env, writes, value: stored } = storage(encode());
+    env.UPSTREAM_URL = value;
+    await assert.rejects(worker.scheduled({}, env), /UPSTREAM_URL must be an absolute HTTPS URL/);
+    assert.deepEqual(writes, []);
+    assert.equal(stored(), encode());
+    const result = await worker.fetch(
+      new Request(`${URL}?upstream=https://visitor.example.org/`),
+      env,
+    );
+    assert.equal(result.status, 200);
+    assert.deepEqual(await result.json(), fixture());
+  }
+  assert.equal(outbound, 0);
 });
 
 test('failed, redirected, stale and malformed refreshes preserve a valid stored snapshot unchanged', async () => {
@@ -215,7 +255,7 @@ test('body bounds apply to declared lengths and streamed bodies without Content-
     json('x'.repeat(MAX_SNAPSHOT_BYTES + 1)),
   ]) {
     await assert.rejects(
-      downloadSnapshot({ now: () => NOW, fetch: async () => response }),
+      downloadSnapshot(SOURCE_URL, { now: () => NOW, fetch: async () => response }),
       /size limit/,
     );
   }
@@ -230,7 +270,7 @@ test('body bounds apply to declared lengths and streamed bodies without Content-
     },
   });
   await assert.rejects(
-    downloadSnapshot({
+    downloadSnapshot(SOURCE_URL, {
       now: () => NOW,
       fetch: async () => new Response(stream, { headers: { 'content-type': 'application/json' } }),
     }),
@@ -241,7 +281,7 @@ test('body bounds apply to declared lengths and streamed bodies without Content-
 
 test('invalid UTF-8 and nonpublic entry fields are rejected', async () => {
   await assert.rejects(
-    downloadSnapshot({
+    downloadSnapshot(SOURCE_URL, {
       now: () => NOW,
       fetch: async () =>
         new Response(new Uint8Array([0xff]), { headers: { 'content-type': 'application/json' } }),
@@ -269,7 +309,10 @@ test('invalid UTF-8 and nonpublic entry fields are rejected', async () => {
 
 test('duplicate JSON keys cannot publish overwritten, unvalidated private fields from source or seeded KV', async () => {
   const body = '{"entries":[{"private_user_id":"secret"}],' + encode().slice(1);
-  const downloaded = await downloadSnapshot({ now: () => NOW, fetch: async () => json(body) });
+  const downloaded = await downloadSnapshot(SOURCE_URL, {
+    now: () => NOW,
+    fetch: async () => json(body),
+  });
   assert.deepEqual(JSON.parse(downloaded), fixture());
   assert.equal(downloaded.includes('secret'), false);
   const worker = createRegistry({ now: () => NOW });
@@ -287,6 +330,7 @@ test('valid refresh can repair a corrupt snapshot but cannot store a snapshot th
   let now = NOW;
   let written = false;
   const env: Env = {
+    UPSTREAM_URL: SOURCE_URL,
     REGISTRY: {
       async get() {
         now += 3600_000;

@@ -48,14 +48,14 @@ if (!response.ok) {
 
 The caller remains responsible for consent, report minimisation, token issuance and one-use token storage. The class encrypts with fresh HPKE context for every submission and decrypts the matching response. P-256, HKDF-SHA256 and AES-128-GCM are used through [`ohttp-ts`](https://github.com/thibmeu/ohttp-ts) and [`hpke`](https://github.com/panva/hpke); there is no custom HPKE implementation here.
 
-This transport client is included for protocol integration and tests. The browser
-collection SDK, extraction and extension integration are not part of this release.
+The transport client accepts an already prepared report. Browser ad extraction
+and extension integration belong to the calling application.
 
 `FrayOhttpClient.discover(options)` obtains public keys through the relay for local demonstrations. **Authenticate or pin the gateway public configuration in production clients.** A malicious relay could substitute its own public key if it also controls unverified key discovery. Publish the same configuration to the whole client population, with a planned rotation schedule; do not issue per-user gateway keys.
 
 ## Deployment boundaries
 
-Relay and gateway need separate, non-colluding operators for the IP/content split to provide its intended privacy benefit. Running the complete Docker example on one machine exercises the protocol; it does not create that separation. A common CDN, tracing system or log pipeline can also reconnect the two sides. Neither the protocol nor these examples prevents timing/size correlation or collusion.
+Relay and gateway need separate, non-colluding operators for the IP/content split to provide its intended privacy benefit. Running both roles on one machine does not create that separation. A common CDN, tracing system or log pipeline can also reconnect the two sides. Neither the protocol nor these implementations prevents timing/size correlation or collusion.
 
 Application access logging is disabled. Disable request/body capture in the surrounding proxy, runtime and monitoring configuration too. HTTPS is required outside an explicitly enabled local HTTP demo. The Cloudflare adapter uses TLS sockets because ordinary Workers `fetch()` can add the visitor's IP to outbound requests; its [README](cloudflare/README.md) explains the resulting gateway constraints.
 

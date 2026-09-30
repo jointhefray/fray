@@ -15,7 +15,6 @@ eligible reports using blind-signed tokens and Oblivious HTTP (OHTTP).
 | OHTTP relay | [Cloudflare Worker](ohttp/cloudflare/) · [Node](ohttp/typescript/) · [Python](ohttp/python/) | Forward encrypted requests to a fixed gateway without forwarding client identity headers. |
 | OHTTP gateway | [TypeScript](ohttp/typescript/) | Decrypt reports and forward them to a private collector, or run a discard-only transport test. |
 | Authorization registry | [Cloudflare Worker](registry/cloudflare/) | Publish a validated public watchlist from a scheduled snapshot. |
-| Example collector | [Node and Redis](examples/collector/) | Exercise token verification, replay rejection, report validation and review grouping. |
 | Protocol contracts | [Specifications and JSON schemas](spec/) | Define consent, report contents, authorization rules and transport behavior. |
 
 Each package has its own manifest and lockfile and can be built individually.
@@ -65,29 +64,8 @@ npm run format:check
 ```
 
 These commands cover the Node issuer, OHTTP services and registry. The Python
-package READMEs document virtual environments, tests and type checks. Collector
-integration tests require an isolated Redis instance:
-
-```sh
-REDIS_URL=redis://127.0.0.1:6379 npm run test:collector
-```
-
-The collector test command fails if Redis is unavailable; it does not silently
-skip the integration tests. Do not point it at a shared or production database.
-
-## Local interoperability demo
-
-```sh
-docker compose up --build -d
-docker compose run --build --rm demo
-docker compose down
-```
-
-The demo issues three tokens, sends fictional reports through the encrypted
-relay/gateway path, and verifies collector triage and quorum behavior. It uses
-explicit demo authentication and locally generated keys. Host ports bind to
-loopback. All roles run on one machine, so the demo verifies interoperability
-and does not provide the independence required for a production deployment.
+package READMEs document virtual environments, tests and type checks. Component
+READMEs also provide standalone Docker build and run commands where supported.
 
 ## Deploying the services
 

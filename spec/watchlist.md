@@ -1,7 +1,7 @@
-# Watchlist format v1
+# Watchlist format
 
 The watchlist is the published, versioned list of watched brands.
-The JSON format is `v: 1`; envelope versions have separate matching rules
+The JSON format is `v: 1`; the matching and authorization rules are defined
 below. Unmatched candidates are not looked up or submitted by the reporting flow.
 Publishing the list makes the reporting scope visible to users and partners.
 
@@ -44,14 +44,14 @@ Its format is defined by [`watchlist.schema.json`](watchlist.schema.json).
 | `version`                      | Monotonic integer. Envelopes cite it as `watchlist_version`.                                                                                                                                                   |
 | `published` / `expires`        | RFC 3339. Clients MUST stop matching against an expired list and fetch a fresh one; an unreachable update endpoint means matching stops, not that a stale list runs forever.                                   |
 | `entries[].domain`             | Normalized primary domain identifying the brand (a more-specific subdomain entry overrides a parent) — the value the envelope carries back as `brand`.                                                                                                                     |
-| `entries[].brand_terms`        | Lowercase brand mentions used by the v1 text rule. They do not trigger the v2 domain-only flow.                                                                                                 |
-| `entries[].authorized_domains` | Domains that legitimately belong to the brand. Informational only: neither matcher suppresses a hit using this list, and v2 does not add these aliases to its match set. |
+| `entries[].brand_terms`        | Lowercase brand mentions for informational use. They do not trigger the domain-only reporting flow.                                                                                                 |
+| `entries[].authorized_domains` | Domains that legitimately belong to the brand. Informational only: the matcher does not suppress hits or add aliases to its match set using this list. |
 | `entries[].policy`             | Authorization completeness: `open` or absent cannot support an unlisted-identity report; `closed` declares a complete authorized ID list; `none` requires an explicit empty list for reporting.                                                              |
 | `entries[].authorized_advertiser_ids` | Explicit Google advertiser ID allowlist (`AR` followed by 1–62 digits, matching the report contract). Missing means unknown authorizations, not an empty allowlist. |
 
-Entry domains MUST be unique. `none` cannot contain authorized IDs. Clients must preserve policy and ID arrays in their validated cache. Lists without an explicit authorization array may support lookups but cannot authorize v2 reports.
+Entry domains MUST be unique. `none` cannot contain authorized IDs. Clients must preserve policy and ID arrays in their validated cache. Lists without an explicit authorization array may support lookups but cannot authorize reports.
 
-## Lookup rule (envelope v2)
+## Lookup rule
 
 These rules apply only after the host has obtained informed explicit consent to
 Fray participation ([`protocol.md` §1.1](protocol.md#11-informed-explicit-consent-before-enrollment)).
@@ -72,30 +72,18 @@ Do not suppress a match because the displayed domain also appears in
 business while claiming an unearned commission. This rule does not declare the ad
 fraudulent; it makes the account eligible for lookup and investigation.
 
-`brand_terms` alone never trigger v2. Other aliases in `authorized_domains` do not
+`brand_terms` alone never trigger a lookup or report. Other aliases in `authorized_domains` do not
 become watched domains automatically; publish a corresponding primary entry if
 an alias should be watched. `creative: null` is allowed only after the same domain
 match, when a candidate exposes usable lookup data but no usable creative.
 
-## Local authorization gate (envelope v2)
+## Local authorization gate
 
 After Google returns an advertiser, evaluate its ID against the most specific matching entry. An authorized ID produces a local `authorized` result. A missing/malformed advertiser ID, missing authorization array, or absent/`open` policy produces `unknown`. Neither result is sent to Fray and neither consumes a report token.
 
 Only a known ID absent from an explicit `closed` authorization list, or a known ID under `none` with an explicit empty list, produces `likely-unauthorized` and permits submission. The comparison happens locally and fails closed on incomplete data. It establishes an apparent authorization violation; investigation is still needed before calling an ad fraudulent.
 
 Re-read the current cached policy after lookup and after any asynchronous token reservation. If the domain is removed, authorizations change, or the list expires, apply the new decision before sending. The host may display advertiser ID/name/country and the decision in its local UI. No lookup response or evaluation is persisted in the watchlist cache.
-
-## Sighting match rule (envelope v1)
-
-Fire when **either**:
-
-1. The display-URL domain is `entries[].domain` or a subdomain of it; **or**
-2. Any `brand_terms` value appears (case-insensitive, after Unicode NFKC folding) in
-   the creative title or body.
-
-Neither rule infers a destination or suppresses a hit using `authorized_domains`.
-
-Then, and only then, the client builds an envelope with `brand = entries[].domain`.
 
 ## Background cache and update cadence
 
