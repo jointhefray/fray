@@ -16,9 +16,9 @@
     "prepare-seed": "node --import tsx scripts/prepare-seed.ts"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
-    "tsx": "^4.20.0",
-    "typescript": "^5.9.3",
+    "@types/node": "^26.6.3",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
     "wrangler": "4.144.0"
   }
 }
