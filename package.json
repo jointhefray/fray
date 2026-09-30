@@ -23,6 +23,6 @@
     "redis": "^4.7.0"
   },
   "devDependencies": {
-    "prettier": "3.9.6"
+    "prettier": "3.9.9"
   }
 }
