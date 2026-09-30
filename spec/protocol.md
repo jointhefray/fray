@@ -9,7 +9,7 @@ This document defines the contract between participating components:
 | **Issuer**    | Partner infrastructure               | [TypeScript](../token-issuer/typescript/), [Python](../token-issuer/python/) |
 | **Client**    | User's browser (partner's extension) | Partner implementation following this protocol |
 | **Relay**     | Partner or neutral third party       | [OHTTP adapters](../ohttp/), [`relay.md`](relay.md)                          |
-| **Gateway**   | Fray infrastructure                  | [OHTTP gateway](../ohttp/typescript/)                                        |
+| **Gateway**   | Receiving service, operated separately from the relay | Operator implementation following [the OHTTP transport profile](relay.md) |
 | **Collector** | Registry infrastructure              | Operator implementation following §6                                  |
 
 ## 1. Design in one paragraph

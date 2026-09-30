@@ -9,18 +9,13 @@
   },
   "exports": {
     ".": "./dist/client.js",
-    "./relay": "./dist/relay.js",
-    "./gateway": "./dist/gateway.js"
+    "./relay": "./dist/relay.js"
   },
   "scripts": {
     "build": "tsc",
-    "heroku-postbuild": "npm run build",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test test/*.test.ts",
-    "start": "node dist/relay-server.js",
-    "start:gateway": "node dist/gateway-server.js",
-    "start:inbound": "node dist/inbound-server.js",
-    "keygen": "node --import tsx src/keygen.ts"
+    "start": "node dist/relay-server.js"
   },
   "dependencies": {
     "hpke": "1.1.4",

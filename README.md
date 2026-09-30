@@ -13,7 +13,7 @@ eligible reports using blind-signed tokens and Oblivious HTTP (OHTTP).
 | --- | --- | --- |
 | Token issuer | [TypeScript](token-issuer/typescript/) · [Python](token-issuer/python/) | Authenticate an existing account and blind-sign a quota of reporting tokens. |
 | OHTTP relay | [Cloudflare Worker](ohttp/cloudflare/) · [Node](ohttp/typescript/) · [Python](ohttp/python/) | Forward encrypted requests to a fixed gateway without forwarding client identity headers. |
-| OHTTP gateway | [TypeScript](ohttp/typescript/) | Decrypt reports and forward them to a private collector, or run a discard-only transport test. |
+| OHTTP client | [TypeScript helper](ohttp/typescript/src/client.ts) | Encrypt prepared reports and decrypt the receiving gateway's responses. |
 | Authorization registry | [Cloudflare Worker](registry/cloudflare/) | Publish a validated public watchlist from a scheduled snapshot. |
 | Protocol contracts | [Specifications and JSON schemas](spec/) | Define consent, report contents, authorization rules and transport behavior. |
 
@@ -69,9 +69,11 @@ READMEs also provide standalone Docker build and run commands where supported.
 
 ## Deploying the services
 
-Follow each component's README to configure your issuer, relay, gateway or
+Follow each component's README to configure your issuer, relay or
 registry. Supply the account, domains, storage and secrets for your deployment.
-The [OHTTP documentation](ohttp/) explains the trust boundaries and key
+Relays connect to a separately operated receiving gateway using the
+[OHTTP transport profile](spec/relay.md). The [OHTTP documentation](ohttp/)
+explains the trust boundaries and key
 distribution requirements. Clients must authenticate gateway public keys through
 a trusted release or configuration channel.
 

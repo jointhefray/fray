@@ -63,7 +63,7 @@ jobs:
         run: docker build --tag fray-check-issuer-typescript token-issuer/typescript
       - name: Build Python token issuer
         run: docker build --tag fray-check-issuer-python token-issuer/python
-      - name: Build TypeScript OHTTP services
+      - name: Build TypeScript OHTTP relay
         run: docker build --tag fray-check-ohttp-typescript ohttp/typescript
       - name: Build Python OHTTP relay
         run: docker build --tag fray-check-ohttp-python ohttp/python

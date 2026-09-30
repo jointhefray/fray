@@ -1,6 +1,6 @@
 # Oblivious HTTP
 
-The relay forwards encrypted reports. The gateway decrypts them and submits them to a configured collector. The relay has no decryption keys; the gateway receives the relay's connection rather than the client's connection.
+The relay forwards encrypted reports to a separately operated receiving gateway. The gateway decrypts them and submits them to a private collector. The relay has no decryption keys; the gateway receives the relay's connection rather than the client's connection.
 
 ```
 Client → Relay → Gateway → Collector
@@ -14,10 +14,9 @@ This is [RFC 9458 OHTTP](https://www.rfc-editor.org/rfc/rfc9458.html) carrying [
 | Relay | TypeScript, Node.js, Docker | [typescript](typescript/README.md) |
 | Relay | Cloudflare Worker | [cloudflare](cloudflare/README.md) |
 | Relay | Python, Docker | [python](python/README.md) |
-| Gateway | TypeScript, Node.js, Docker | [typescript](typescript/README.md#gateway) |
 | Protocol client | TypeScript class | [client.ts](typescript/src/client.ts) |
 
-All three relays use the same HTTP contract. Choose one; they are alternatives, not a chain. Python implements the opaque relay, not a second copy of the gateway cryptography.
+All three relays use the same HTTP contract. Choose one; they are alternatives, not a chain. Configure the relay with a receiving gateway that implements the [transport profile](../spec/relay.md). No relay needs gateway private keys.
 
 ## Contract
 
@@ -29,7 +28,7 @@ All three relays use the same HTTP contract. Choose one; they are alternatives, 
 
 The relays accept at most 16 KiB of ciphertext and 4 KiB of key configuration. They reject empty submissions, unsupported media types, content encodings, query strings, and redirects. Requests and responses are bounded while reading, including chunked bodies. Timeout failures stop the request; there is no direct-collector fallback.
 
-The only inner operation is `POST https://collector.fray.invalid/submit` with JSON. That URL is a routing identifier, never fetched. The gateway forwards to its configured `COLLECTOR_URL`, with `{country: "ZZ", envelope: ...}`. There is deliberately no client-supplied country header. The report limit is 8 KiB minus 128 bytes, leaving room for the collector wrapper. Collector diagnostics are discarded: any collector HTTP 200 becomes an encrypted, empty HTTP 200 response, whether the collector accepted or dropped the report. Transport failures produce encrypted 503 responses.
+The only inner operation is `POST https://collector.fray.invalid/submit` with JSON. That URL is a routing identifier, never fetched. The receiving gateway must forward reports to its private collector with `{country: "ZZ", envelope: ...}`. There is deliberately no client-supplied country header. The report limit is 8064 bytes, leaving 128 bytes for the collector wrapper. The receiving service must keep collector diagnostics private: any collector HTTP 200 becomes an encrypted, empty HTTP 200 response, whether the collector accepted or dropped the report. Transport failures produce encrypted 503 responses.
 
 ## Protocol client
 
@@ -59,6 +58,6 @@ Relay and gateway need separate, non-colluding operators for the IP/content spli
 
 Application access logging is disabled. Disable request/body capture in the surrounding proxy, runtime and monitoring configuration too. HTTPS is required outside an explicitly enabled local HTTP demo. The Cloudflare adapter uses TLS sockets because ordinary Workers `fetch()` can add the visitor's IP to outbound requests; its [README](cloudflare/README.md) explains the resulting gateway constraints.
 
-The gateway stores private key material only on its side. `keygen` creates a file with mode 0600 and refuses to overwrite it. To rotate, distribute a new public configuration through authenticated client updates and retain old private keys during the overlap window. The stored file supports an array of keys with distinct IDs. Rotation and key publication are not automated by this example.
+Only the receiving gateway holds its private keys. Its operator must coordinate public-key rotation with authenticated client configuration updates and allow an overlap window for in-flight requests. Relays forward public configurations without treating them as a source of trust.
 
-OHTTP does not prevent replay: the collector's token spent-set remains necessary. This integration and its OHTTP library have not received an independent security audit. Tests exercise ciphertext round trips, a published RFC vector, forwarding boundaries, malformed input, limits, and timeouts; they are not a deployment audit.
+OHTTP does not prevent replay: the receiving collector must verify and spend one-use tokens. These implementations and their OHTTP dependencies have not received an independent security audit.
