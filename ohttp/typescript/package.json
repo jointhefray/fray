@@ -18,12 +18,12 @@
     "start": "node dist/relay-server.js"
   },
   "dependencies": {
-    "hpke": "1.1.4",
-    "ohttp-ts": "0.5.2"
+    "hpke": "1.1.7",
+    "ohttp-ts": "0.6.0"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
-    "tsx": "^4.20.0",
-    "typescript": "^5.9.3"
+    "@types/node": "^26.6.3",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
   }
 }
