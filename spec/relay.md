@@ -4,7 +4,7 @@ The transport uses [RFC 9458 Oblivious HTTP](https://www.rfc-editor.org/rfc/rfc9
 
 ## Roles
 
-The client encrypts the sanitized report for a **gateway**. A **relay** forwards the ciphertext to that gateway. The gateway decrypts it and submits the report to Fray's private collector.
+The client encrypts the sanitized report for a **receiving gateway** operated separately from the relay. A **relay** forwards the ciphertext to that gateway. The receiving service implements this transport profile, decrypts the report and submits it to a private collector.
 
 The host must obtain informed explicit user consent before enrolling anyone in
 this reporting flow; see [`protocol.md` §1.1](protocol.md#11-informed-explicit-consent-before-enrollment).
@@ -32,12 +32,12 @@ The encrypted inner request targets a fixed logical report endpoint. It cannot m
 
 The client needs an authentic gateway key configuration, distributed through the partner's trusted release/configuration channel. `GET /ohttp-keys` is useful for demos and updates, but accepting any key supplied by a relay would let a malicious relay substitute a key it owns. Verify or pin the expected configuration in production.
 
-Gateway private keys belong only at the gateway. Persist them across restarts; do not bake them into images or commit them. Rotation needs a coordinated client configuration update and an overlap window for in-flight requests. The gateway accepts multiple configured keys for that purpose.
+Gateway private keys belong only at the receiving gateway. Its operator must coordinate public-key rotation with authenticated client configuration updates and an overlap window for in-flight requests. The relay never receives private keys.
 
-## Deployment targets
+## Relay implementations
 
-- [Node/TypeScript](../ohttp/typescript/): relay and gateway, with optional Docker.
+- [Node/TypeScript](../ohttp/typescript/): opaque relay and protocol client helper, with optional Docker for the relay.
 - [Cloudflare Worker](../ohttp/cloudflare/): relay adapter. Follow its egress instructions; ordinary platform fetch behavior can add client IP headers.
-- [Python](../ohttp/python/): opaque relay, with optional Docker. It uses the same Node/TypeScript gateway; relay code never needs gateway private keys or a crypto library.
+- [Python](../ohttp/python/): opaque relay, with optional Docker. It uses the same receiving-gateway contract; relay code never needs gateway private keys or a crypto library.
 
 Review the package-specific configuration and dependency notes before deployment. Relay and gateway operators must be independent to establish the stated separation of client IPs from report contents.
