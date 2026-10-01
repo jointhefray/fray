@@ -1,5 +1,5 @@
 -r requirements.txt
-pytest>=8
-httpx>=0.27
-cryptography>=43
-mypy>=1.15
+pytest>=9.1.1
+httpx>=0.28.1
+cryptography>=50.0.1
+mypy>=2.3.1
