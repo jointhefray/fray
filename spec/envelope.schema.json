@@ -2,57 +2,44 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://jointhefray.org/schemas/envelope.json",
   "title": "Fray report envelope",
+  "description": "Wire version 3. One envelope describes one Google results page and carries one token. Byte limits (524288 per envelope, 65536 per ad_html) are checked on the serialized UTF-8 form, not by this schema. Tokens are RFC 9474 RSABSSA-SHA384-PSS-Deterministic signatures. Each epoch has exactly four issuer keys, one per metadata value; the key that signed a token carries its 2 bits of issuer-assigned public metadata.",
   "oneOf": [
     {
-      "$ref": "#/$defs/v1"
+      "$ref": "#/$defs/sighting"
     },
     {
-      "$ref": "#/$defs/v2"
+      "$ref": "#/$defs/search"
     }
   ],
   "$defs": {
-    "v1": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "v",
-        "watchlist_version",
-        "brand",
-        "platform",
-        "surface",
-        "observed_hour",
-        "creative",
-        "token"
-      ],
-      "properties": {
-        "v": {
-          "const": 1
-        },
-        "watchlist_version": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "brand": {
-          "type": "string",
-          "maxLength": 253,
-          "pattern": "^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$"
-        },
-        "platform": {
-          "type": "string",
-          "maxLength": 253,
-          "pattern": "^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$"
-        },
-        "surface": {
-          "enum": ["search", "feed"]
-        },
-        "observed_hour": {
-          "type": "string",
-          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:00:00Z$"
-        },
-        "creative": {
+    "domain": {
+      "type": "string",
+      "maxLength": 253,
+      "pattern": "^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$"
+    },
+    "observed_hour": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:00:00Z$"
+    },
+    "device": {
+      "enum": [
+        "android-mobile",
+        "ios-mobile",
+        "macos-desktop",
+        "windows-desktop",
+        "linux-desktop",
+        "chromeos-desktop",
+        "other"
+      ]
+    },
+    "creative": {
+      "anyOf": [
+        {
           "type": "object",
           "additionalProperties": false,
-          "required": ["title"],
+          "required": [
+            "title"
+          ],
           "properties": {
             "title": {
               "type": "string",
@@ -75,7 +62,8 @@
             },
             "advertiser_id": {
               "type": "string",
-              "maxLength": 64
+              "maxLength": 64,
+              "pattern": "^AR[0-9]{1,62}$"
             },
             "advertiser_name": {
               "type": "string",
@@ -83,64 +71,254 @@
             }
           }
         },
-        "token": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["issuer", "kid", "msg", "sig"],
-          "properties": {
-            "issuer": {
-              "type": "string",
-              "maxLength": 253,
-              "pattern": "^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$"
-            },
-            "kid": {
-              "type": "string",
-              "pattern": "^ep-\\d{4}-\\d{2}$"
-            },
-            "msg": {
-              "type": "string",
-              "minLength": 43,
-              "maxLength": 45,
-              "pattern": "^[A-Za-z0-9+/=_-]+$"
-            },
-            "sig": {
-              "type": "string",
-              "minLength": 300,
-              "maxLength": 1400,
-              "pattern": "^[A-Za-z0-9+/=_-]+$"
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "advertiser": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 64,
+          "pattern": "^AR[0-9]{1,62}$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "pattern": "^[^\\u0000-\\u001f\\u007f]+$",
+          "allOf": [
+            {
+              "pattern": "\\S"
             }
-          }
+          ]
+        },
+        "country": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "^[^\\u0000-\\u001f\\u007f]+$",
+          "allOf": [
+            {
+              "pattern": "\\S"
+            }
+          ]
+        },
+        "targeting": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 8,
+            "prefixItems": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 65535
+              }
+            ],
+            "items": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 65535
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "description": "Optional raw 'why this ad' targeting reason codes from the advertiser lookup, exactly as the platform returned them but restricted to tuples of small non-negative integers or null (first element: the reason category; the rest: the platform's source sub-codes). Anything else is dropped by the client, so no value or free text can be carried. A bare category number is carried as a one-element tuple. [] means the lookup resolved but returned no usable targeting information (no targeting block, or reasons absent or all invalid); the field is absent when the lookup failed or resolved with an explicitly empty reasons list. The collector maps categories to names."
         }
       }
     },
-    "v2": {
+    "lookup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "atParameter"
+      ],
+      "properties": {
+        "kind": {
+          "const": "google-batchexecute"
+        },
+        "atParameter": {
+          "type": "string",
+          "maxLength": 528,
+          "pattern": "^[A-Za-z0-9_-]{10,512}(?::|%3[Aa])[0-9]{13}$"
+        }
+      }
+    },
+    "batch_code": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 8064,
+      "pattern": "^[^\\u0000-\\u0020\\u007f]+$"
+    },
+    "ad_html": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 65536
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "token": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "issuer",
+        "kid",
+        "meta",
+        "msg",
+        "sig"
+      ],
+      "properties": {
+        "issuer": {
+          "$ref": "#/$defs/domain"
+        },
+        "kid": {
+          "type": "string",
+          "pattern": "^ep-\\d{4}-(0[1-9]|1[0-2])$"
+        },
+        "meta": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3,
+          "description": "Issuer-assigned public metadata (2 bits; values 0-3 only). The token is signed with the epoch key for this value, published with JWK kid `<kid>.<meta>`. Its meaning is defined privately by the issuer."
+        },
+        "msg": {
+          "type": "string",
+          "minLength": 43,
+          "maxLength": 45,
+          "pattern": "^[A-Za-z0-9+/=_-]+$"
+        },
+        "sig": {
+          "type": "string",
+          "minLength": 300,
+          "maxLength": 1400,
+          "pattern": "^[A-Za-z0-9+/=_-]+$"
+        }
+      }
+    },
+    "sighting_ad": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "brand",
+        "observed_domain",
+        "creative",
+        "advertiser",
+        "batch_code",
+        "ad_html"
+      ],
+      "properties": {
+        "brand": {
+          "$ref": "#/$defs/domain"
+        },
+        "observed_domain": {
+          "$ref": "#/$defs/domain"
+        },
+        "ad_id": {
+          "$ref": "#/$defs/ad_id"
+        },
+        "creative": {
+          "$ref": "#/$defs/creative"
+        },
+        "advertiser": {
+          "$ref": "#/$defs/advertiser"
+        },
+        "batch_code": {
+          "$ref": "#/$defs/batch_code"
+        },
+        "ad_html": {
+          "$ref": "#/$defs/ad_html"
+        }
+      }
+    },
+    "search_ad": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "position",
+        "observed_domain",
+        "creative",
+        "advertiser",
+        "ad_html"
+      ],
+      "properties": {
+        "position": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50
+        },
+        "observed_domain": {
+          "$ref": "#/$defs/domain"
+        },
+        "ad_id": {
+          "$ref": "#/$defs/ad_id"
+        },
+        "creative": {
+          "$ref": "#/$defs/creative"
+        },
+        "advertiser": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/advertiser"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "batch_code": {
+          "$ref": "#/$defs/batch_code"
+        },
+        "ad_html": {
+          "$ref": "#/$defs/ad_html"
+        }
+      }
+    },
+    "sighting": {
       "type": "object",
       "additionalProperties": false,
       "required": [
         "v",
+        "kind",
         "watchlist_version",
-        "brand",
         "platform",
         "surface",
         "observed_hour",
-        "observed_domain",
-        "creative",
-        "advertiser",
         "lookup",
+        "ads",
         "token"
       ],
       "properties": {
         "v": {
-          "const": 2
+          "const": 3
+        },
+        "kind": {
+          "const": "sighting"
         },
         "watchlist_version": {
           "type": "integer",
           "minimum": 1
-        },
-        "brand": {
-          "type": "string",
-          "maxLength": 253,
-          "pattern": "^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$"
         },
         "platform": {
           "const": "google.com"
@@ -149,140 +327,114 @@
           "const": "search"
         },
         "observed_hour": {
+          "$ref": "#/$defs/observed_hour"
+        },
+        "device": {
+          "$ref": "#/$defs/device"
+        },
+        "keyword": {
           "type": "string",
-          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:00:00Z$"
-        },
-        "observed_domain": {
-          "type": "string",
-          "maxLength": 253,
-          "pattern": "^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$"
-        },
-        "creative": {
-          "anyOf": [
+          "minLength": 1,
+          "maxLength": 200,
+          "pattern": "^[^\\u0000-\\u001f\\u007f]+$",
+          "allOf": [
             {
-              "type": "object",
-              "additionalProperties": false,
-              "required": ["title"],
-              "properties": {
-                "title": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 300
-                },
-                "body": {
-                  "type": "string",
-                  "maxLength": 1000
-                },
-                "display_url": {
-                  "type": "string",
-                  "maxLength": 300
-                },
-                "click_url": {
-                  "type": "string",
-                  "minLength": 12,
-                  "maxLength": 2048,
-                  "pattern": "^https://[^\\s]+$"
-                },
-                "advertiser_id": {
-                  "type": "string",
-                  "maxLength": 64,
-                  "pattern": "^AR[0-9]{1,62}$"
-                },
-                "advertiser_name": {
-                  "type": "string",
-                  "maxLength": 200
-                }
-              }
-            },
-            {
-              "type": "null"
+              "pattern": "\\S"
             }
-          ]
-        },
-        "advertiser": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["name"],
-          "properties": {
-            "id": {
-              "type": "string",
-              "maxLength": 64,
-              "pattern": "^AR[0-9]{1,62}$"
-            },
-            "name": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 200,
-              "pattern": "^[^\\u0000-\\u001f\\u007f]+$",
-              "allOf": [
-                {
-                  "pattern": "\\S"
-                }
-              ]
-            },
-            "country": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 100,
-              "pattern": "^[^\\u0000-\\u001f\\u007f]+$",
-              "allOf": [
-                {
-                  "pattern": "\\S"
-                }
-              ]
-            }
-          }
+          ],
+          "description": "Optional on sightings, and only from a partner that has opted in to sending the passive search query (and whose collector configuration allows it): the page's search query as the browser supplied it, NFC-normalized and trimmed. Absent by default."
         },
         "lookup": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["kind", "batchCode", "atParameter"],
-          "properties": {
-            "kind": {
-              "const": "google-batchexecute"
-            },
-            "batchCode": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 8064,
-              "pattern": "^[^\\u0000-\\u0020\\u007f]+$"
-            },
-            "atParameter": {
-              "type": "string",
-              "maxLength": 528,
-              "pattern": "^[A-Za-z0-9_-]{10,512}(?::|%3[Aa])[0-9]{13}$"
-            }
+          "$ref": "#/$defs/lookup"
+        },
+        "ads": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20,
+          "items": {
+            "$ref": "#/$defs/sighting_ad"
           }
         },
         "token": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["issuer", "kid", "msg", "sig"],
-          "properties": {
-            "issuer": {
-              "type": "string",
-              "maxLength": 253,
-              "pattern": "^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$"
-            },
-            "kid": {
-              "type": "string",
-              "pattern": "^ep-\\d{4}-(0[1-9]|1[0-2])$"
-            },
-            "msg": {
-              "type": "string",
-              "minLength": 43,
-              "maxLength": 45,
-              "pattern": "^[A-Za-z0-9+/=_-]+$"
-            },
-            "sig": {
-              "type": "string",
-              "minLength": 300,
-              "maxLength": 1400,
-              "pattern": "^[A-Za-z0-9+/=_-]+$"
-            }
-          }
+          "$ref": "#/$defs/token"
         }
       }
+    },
+    "search": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "kind",
+        "platform",
+        "surface",
+        "observed_hour",
+        "device",
+        "keyword",
+        "outcome",
+        "ads",
+        "token"
+      ],
+      "properties": {
+        "v": {
+          "const": 3
+        },
+        "kind": {
+          "const": "search"
+        },
+        "platform": {
+          "const": "google.com"
+        },
+        "surface": {
+          "const": "search"
+        },
+        "observed_hour": {
+          "$ref": "#/$defs/observed_hour"
+        },
+        "device": {
+          "$ref": "#/$defs/device"
+        },
+        "keyword": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "pattern": "^[^\\u0000-\\u001f\\u007f]+$",
+          "allOf": [
+            {
+              "pattern": "\\S"
+            }
+          ],
+          "description": "The job keyword exactly as the host received it from its job source; never re-derived from the page or its q= parameter."
+        },
+        "outcome": {
+          "enum": [
+            "ok",
+            "blocked",
+            "error"
+          ]
+        },
+        "lookup": {
+          "$ref": "#/$defs/lookup"
+        },
+        "ads": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 20,
+          "items": {
+            "$ref": "#/$defs/search_ad"
+          }
+        },
+        "token": {
+          "$ref": "#/$defs/token"
+        }
+      }
+    },
+    "ad_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^[^\\u0000-\\u0020\\u007f]+$",
+      "description": "Google's identifier for the served creative, as returned by the advertiser lookup; equals the ai= parameter of the ad's main click link. Optional."
     }
   }
 }
