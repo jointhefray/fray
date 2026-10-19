@@ -1,0 +1,139 @@
+{
+  "description": "Relay country and device-form derivation (spec/relay.md). Shared by the TypeScript/Worker and Python relay tests. null means the header or value is absent.",
+  "country": [
+    { "input": "GB", "expected": "GB" },
+    { "input": "US", "expected": "US" },
+    { "input": "de", "expected": "DE" },
+    { "input": " FR ", "expected": "FR" },
+    { "input": "ZZ", "expected": "ZZ" },
+    { "input": "T1", "expected": "ZZ" },
+    { "input": "XX", "expected": "ZZ" },
+    { "input": "xx", "expected": "ZZ" },
+    { "input": null, "expected": "ZZ" },
+    { "input": "", "expected": "ZZ" },
+    { "input": "G", "expected": "ZZ" },
+    { "input": "GBR", "expected": "ZZ" },
+    { "input": "G1", "expected": "ZZ" },
+    { "input": "12", "expected": "ZZ" },
+    { "input": "GB, US", "expected": "ZZ" },
+    { "input": "G-", "expected": "ZZ" },
+    { "input": "ÅB", "expected": "ZZ" },
+    { "input": "ß", "expected": "ZZ" },
+    { "input": "ıx", "expected": "ZZ" }
+  ],
+  "device": [
+    { "name": "hint Android", "platform": "\"Android\"", "userAgent": null, "expected": "android-mobile" },
+    { "name": "hint iOS", "platform": "\"iOS\"", "userAgent": null, "expected": "ios-mobile" },
+    { "name": "hint macOS", "platform": "\"macOS\"", "userAgent": null, "expected": "macos-desktop" },
+    { "name": "hint Windows", "platform": "\"Windows\"", "userAgent": null, "expected": "windows-desktop" },
+    { "name": "hint Linux", "platform": "\"Linux\"", "userAgent": null, "expected": "linux-desktop" },
+    { "name": "hint Chrome OS", "platform": "\"Chrome OS\"", "userAgent": null, "expected": "chromeos-desktop" },
+    { "name": "hint ChromeOS", "platform": "\"ChromeOS\"", "userAgent": null, "expected": "chromeos-desktop" },
+    { "name": "hint without structured-field quotes", "platform": "macOS", "userAgent": null, "expected": "macos-desktop" },
+    { "name": "hint with surrounding whitespace", "platform": "  \"Windows\" ", "userAgent": null, "expected": "windows-desktop" },
+    {
+      "name": "hint takes precedence over user agent",
+      "platform": "\"Windows\"",
+      "userAgent": "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36",
+      "expected": "windows-desktop"
+    },
+    {
+      "name": "hint Linux precedence over Android user agent",
+      "platform": "\"Linux\"",
+      "userAgent": "Mozilla/5.0 (Linux; Android 14) Mobile",
+      "expected": "linux-desktop"
+    },
+    {
+      "name": "unmapped hint falls back to user agent",
+      "platform": "\"Unknown\"",
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+      "expected": "macos-desktop"
+    },
+    {
+      "name": "empty hint falls back to user agent",
+      "platform": "\"\"",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+      "expected": "windows-desktop"
+    },
+    { "name": "hint is case-sensitive", "platform": "\"macos\"", "userAgent": null, "expected": "other" },
+    { "name": "malformed hint, no user agent", "platform": "\"mac", "userAgent": null, "expected": "other" },
+    { "name": "repeated hint fields are not mapped", "platform": "\"macOS\", \"Windows\"", "userAgent": null, "expected": "other" },
+    { "name": "unknown hint, no user agent", "platform": "\"Fuchsia\"", "userAgent": null, "expected": "other" },
+    {
+      "name": "Android Chrome (Android before Linux)",
+      "platform": null,
+      "userAgent": "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36",
+      "expected": "android-mobile"
+    },
+    {
+      "name": "Windows Phone also naming Android (Android before Windows NT)",
+      "platform": null,
+      "userAgent": "Mozilla/5.0 (Windows Phone 10.0; Android 6.0.1; Microsoft; Lumia 950) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/52.0.2743.116 Mobile Safari/537.36 Edge/15.15063",
+      "expected": "android-mobile"
+    },
+    {
+      "name": "iPhone (iPhone before Mac OS X)",
+      "platform": null,
+      "userAgent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1",
+      "expected": "ios-mobile"
+    },
+    {
+      "name": "iPad legacy user agent",
+      "platform": null,
+      "userAgent": "Mozilla/5.0 (iPad; CPU OS 12_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
+      "expected": "ios-mobile"
+    },
+    {
+      "name": "iPod",
+      "platform": null,
+      "userAgent": "Mozilla/5.0 (iPod touch; CPU iPhone OS 12_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
+      "expected": "ios-mobile"
+    },
+    {
+      "name": "ChromeOS (CrOS before Linux)",
+      "platform": null,
+      "userAgent": "Mozilla/5.0 (X11; CrOS x86_64 14541.0.0; Linux) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+      "expected": "chromeos-desktop"
+    },
+    {
+      "name": "Windows",
+      "platform": null,
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0",
+      "expected": "windows-desktop"
+    },
+    {
+      "name": "macOS Macintosh",
+      "platform": null,
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 14.5; rv:128.0) Gecko/20100101 Firefox/128.0",
+      "expected": "macos-desktop"
+    },
+    {
+      "name": "Mac OS X without Macintosh",
+      "platform": null,
+      "userAgent": "CustomBrowser/1.0 (Mac OS X 10_15_7)",
+      "expected": "macos-desktop"
+    },
+    {
+      "name": "iPadOS desktop-class user agent reads as macOS",
+      "platform": null,
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15",
+      "expected": "macos-desktop"
+    },
+    {
+      "name": "Linux desktop",
+      "platform": null,
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0",
+      "expected": "linux-desktop"
+    },
+    {
+      "name": "FreeBSD",
+      "platform": null,
+      "userAgent": "Mozilla/5.0 (X11; FreeBSD amd64; rv:128.0) Gecko/20100101 Firefox/128.0",
+      "expected": "other"
+    },
+    { "name": "non-browser client", "platform": null, "userAgent": "curl/8.7.1", "expected": "other" },
+    { "name": "user-agent tokens are case-sensitive", "platform": null, "userAgent": "mozilla/5.0 (linux; android 14)", "expected": "other" },
+    { "name": "empty user agent", "platform": null, "userAgent": "", "expected": "other" },
+    { "name": "no headers", "platform": null, "userAgent": null, "expected": "other" }
+  ]
+}

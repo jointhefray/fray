@@ -24,10 +24,22 @@ export function serve(handler: Fetcher, port: number, host = '0.0.0.0'): Server 
         new Request(new URL(incoming.url ?? '/', 'http://local.invalid'), init),
       );
 
-      outgoing.writeHead(result.status, Object.fromEntries(result.headers));
-      outgoing.end(Buffer.from(await result.arrayBuffer()));
+      const body = Buffer.from(await result.arrayBuffer());
+      const responseHeaders: Record<string, string> = Object.fromEntries(result.headers);
+
+      // A handler that rejects a request (e.g. 413) before reading its whole body leaves the
+      // rest on the socket; reusing that connection would misparse it, so close it instead.
+      if (!incoming.complete) responseHeaders.connection = 'close';
+
+      outgoing.writeHead(result.status, responseHeaders);
+      outgoing.end(body);
     } catch {
-      if (!outgoing.headersSent) outgoing.writeHead(400, { 'cache-control': 'no-store' });
+      if (!outgoing.headersSent) {
+        outgoing.writeHead(400, {
+          'cache-control': 'no-store',
+          ...(incoming.complete ? {} : { connection: 'close' }),
+        });
+      }
 
       outgoing.end();
     }

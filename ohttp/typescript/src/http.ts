@@ -1,6 +1,11 @@
-/** Limits include the encrypted BHTTP framing, not only the report JSON. */
-export const MAX_MESSAGE_BYTES = 16 * 1024;
-export const MAX_ENVELOPE_BYTES = 8 * 1024 - 128;
+/** Encapsulated request, including HPKE and BHTTP framing, at relay and gateway (spec/relay.md). */
+export const MAX_MESSAGE_BYTES = 655360;
+/** Serialized UTF-8 envelope: the decrypted inner request body (spec/envelope.md). */
+export const MAX_ENVELOPE_BYTES = 524288;
+/** Serialized `{ country, device, envelope }` sent to the collector (spec/relay.md). */
+export const MAX_WRAPPER_BYTES = 532480;
+/** Encapsulated response. The gateway only ever returns an encrypted empty status. */
+export const MAX_RESPONSE_BYTES = 16 * 1024;
 export const MAX_KEY_BYTES = 4096;
 
 export const REQUEST_TYPE = 'message/ohttp-req';
