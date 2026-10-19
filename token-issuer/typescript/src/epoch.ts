@@ -1,5 +1,5 @@
-// Epoch arithmetic. Epoch = calendar month, UTC; key id "ep-YYYY-MM"
-// (protocol.md §3). Nothing here touches keys — see keys.ts.
+// Epoch arithmetic. Epoch = calendar month, UTC, written "ep-YYYY-MM"; each epoch has four
+// keys with key IDs "ep-YYYY-MM.N", one per metadata value N (protocol.md §3).
 
 export function epochIdFor(date: Date = new Date()): string {
   const y = date.getUTCFullYear();
@@ -14,8 +14,17 @@ export function previousEpochIdFor(date: Date = new Date()): string {
   return epochIdFor(new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() - 1, 1)));
 }
 
-const KID_RE = /^ep-\d{4}-(0[1-9]|1[0-2])$/;
+export function nextEpochIdFor(date: Date = new Date()): string {
+  return epochIdFor(new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1)));
+}
 
-export function isValidKid(kid: string): boolean {
-  return KID_RE.test(kid);
+const EPOCH_RE = /^ep-\d{4}-(0[1-9]|1[0-2])$/;
+const KEY_ID_RE = /^ep-\d{4}-(0[1-9]|1[0-2])\.[0-3]$/;
+
+export function isValidEpoch(epoch: string): boolean {
+  return EPOCH_RE.test(epoch);
+}
+
+export function isValidKeyId(kid: string): boolean {
+  return KEY_ID_RE.test(kid);
 }

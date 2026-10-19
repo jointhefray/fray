@@ -13,9 +13,9 @@ class QuotaStore(Protocol):
 
 
 class DailyQuota:
-    def __init__(self, limit: int = 64):
-        if type(limit) is not int or not 1 <= limit <= 64:
-            raise ValueError("quota must be an integer from 1 to 64")
+    def __init__(self, limit: int = 16):
+        if type(limit) is not int or not 1 <= limit <= 16:
+            raise ValueError("quota must be an integer from 1 to 16")
         self.limit = limit
         self._used: dict[tuple[date, str], int] = {}
         self._latest_day: date | None = None

@@ -2,8 +2,17 @@
 
 import hmac
 import os
+import re
+import sys
+from datetime import datetime, timezone
 from fastapi import FastAPI, Request
-from fray_token_issuer import DailyQuota, PrivacyTokenIssuer, create_app
+from fray_token_issuer import (
+    DailyQuota,
+    PrivacyTokenIssuer,
+    create_app,
+    epoch_id,
+    generate_epoch_keys,
+)
 
 
 def create_demo_app() -> FastAPI:
@@ -14,6 +23,22 @@ def create_demo_app() -> FastAPI:
         )
     if os.environ.get("FRAY_ENV") == "production":
         raise RuntimeError("The mocked validate_user must not run in production")
+    # The demo assigns one fixed issuer-defined value to every request.
+    meta_text = os.environ.get("LOCAL_DEMO_META", "0")
+    if not re.fullmatch(r"[0-3]", meta_text):
+        raise RuntimeError("LOCAL_DEMO_META must be 0, 1, 2 or 3")
+    demo_meta = int(meta_text)
+    keys_dir = os.environ.get("KEYS_DIR", "./keys")
+
+    # LOCAL DEMO convenience: create this month's four keys if they are missing. A
+    # production issuer never generates keys while serving; run the keygen command ahead.
+    generated = generate_epoch_keys(keys_dir, epoch_id(datetime.now(timezone.utc)))
+    if generated.created:
+        print(
+            f"LOCAL DEMO generated {', '.join(generated.created)} in {keys_dir}.",
+            file=sys.stderr,
+            flush=True,
+        )
 
     async def validate_user(request: Request) -> str | None:
         # LOCAL MOCK: replace with existing session/device authentication.
@@ -26,11 +51,17 @@ def create_demo_app() -> FastAPI:
             else None
         )
 
+    def meta_for(_subject: str) -> int:
+        # LOCAL MOCK: replace with your own assignment of one of the four
+        # issuer-defined values.
+        return demo_meta
+
     issuer = PrivacyTokenIssuer(
-        keys_dir=os.environ.get("KEYS_DIR", "./keys"),
+        keys_dir=keys_dir,
         validate_user=validate_user,
-        quota=DailyQuota(int(os.environ.get("DAILY_QUOTA", "64"))),
-        max_batch=int(os.environ.get("MAX_BATCH", "64")),
+        meta_for=meta_for,
+        quota=DailyQuota(int(os.environ.get("DAILY_QUOTA", "16"))),
+        max_batch=int(os.environ.get("MAX_BATCH", "16")),
     )
     return create_app(issuer)
 

@@ -1,3 +1,5 @@
+import type { TokenMeta } from './rsabssa.js';
+
 /** Configuration for the local example only; the library takes explicit options. */
 export function configFromEnv(env: NodeJS.ProcessEnv = process.env) {
   if (env.FRAY_LOCAL_DEMO !== '1' || !env.LOCAL_DEMO_TOKEN || env.LOCAL_DEMO_TOKEN.length < 16) {
@@ -15,12 +17,20 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env) {
     throw new Error('PORT must be 1..65535');
   }
 
+  // The demo assigns one fixed issuer-defined value to every request.
+  const metaText = env.LOCAL_DEMO_META ?? '0';
+  if (!/^[0-3]$/.test(metaText)) {
+    throw new Error('LOCAL_DEMO_META must be 0, 1, 2 or 3');
+  }
+  const meta = Number(metaText) as TokenMeta;
+
   return {
     host: env.HOST ?? '127.0.0.1',
     port,
     keysDir: env.KEYS_DIR ?? './keys',
     token: env.LOCAL_DEMO_TOKEN,
-    dailyQuota: Number(env.DAILY_QUOTA ?? 64),
-    maxBatch: Number(env.MAX_BATCH ?? 64),
+    dailyQuota: Number(env.DAILY_QUOTA ?? 16),
+    maxBatch: Number(env.MAX_BATCH ?? 16),
+    meta,
   };
 }

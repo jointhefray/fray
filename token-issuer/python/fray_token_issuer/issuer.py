@@ -1,4 +1,4 @@
-"""Authentication and quota policy around RFC 9474 BlindSign."""
+"""Authentication, metadata and quota policy around RFC 9474 BlindSign."""
 
 import asyncio
 import base64
@@ -9,8 +9,8 @@ from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Generic, TypeVar
-from Crypto.PublicKey import RSA
-from .keys import EpochKeys
+from .keys import EpochKeys, KeyUnavailableError
+from .rsabssa import SigningKey, blind_sign, is_token_meta
 from .quota import DailyQuota, QuotaStore
 
 Context = TypeVar("Context")
@@ -24,21 +24,8 @@ class IssuanceError(Exception):
         self.code = code
 
 
-def _sign_batch(key: RSA.RsaKey, messages: list[bytes]) -> list[str]:
-    signatures = []
-    for message in messages:
-        value = int.from_bytes(message, "big")
-        # RFC 9474 §4.2. This isolated adapter uses PyCryptodome 3.23.0's
-        # internal raw private operation (with RSA blinding), not Python pow(d).
-        # Its dependency is pinned; upgrades require these interoperability tests.
-        signature = key._decrypt_to_bytes(value)  # type: ignore[attr-defined]
-        if (
-            len(signature) != key.size_in_bytes()
-            or pow(int.from_bytes(signature, "big"), key.e, key.n) != value
-        ):
-            raise RuntimeError("blind signing self-check failed")
-        signatures.append(base64.b64encode(signature).decode())
-    return signatures
+def _sign_batch(key: SigningKey, messages: list[bytes]) -> list[str]:
+    return [base64.b64encode(blind_sign(key, message)).decode() for message in messages]
 
 
 class PrivacyTokenIssuer(Generic[Context]):
@@ -47,17 +34,21 @@ class PrivacyTokenIssuer(Generic[Context]):
         *,
         keys_dir: str | Path,
         validate_user: Callable[[Context], str | None | Awaitable[str | None]],
+        meta_for: Callable[[str], int | Awaitable[int]],
         quota: QuotaStore | None = None,
-        max_batch: int = 64,
+        max_batch: int = 16,
         clock: Callable[[], datetime] | None = None,
         on_issue: Callable[[AuditEvent], None | Awaitable[None]] | None = None,
     ):
         if not callable(validate_user):
             raise ValueError("validate_user is required")
-        if type(max_batch) is not int or not 1 <= max_batch <= 64:
-            raise ValueError("max_batch must be an integer from 1 to 64")
+        if not callable(meta_for):
+            raise ValueError("meta_for is required")
+        if type(max_batch) is not int or not 1 <= max_batch <= 16:
+            raise ValueError("max_batch must be an integer from 1 to 16")
         self._keys = EpochKeys(keys_dir)
         self._validate_user = validate_user
+        self._meta_for = meta_for
         self._quota = quota if quota is not None else DailyQuota()
         self._max_batch = max_batch
         self._clock = clock or (lambda: datetime.now(timezone.utc))
@@ -70,24 +61,47 @@ class PrivacyTokenIssuer(Generic[Context]):
         return now.astimezone(timezone.utc)
 
     async def initialize(self) -> None:
-        """Warm the current epoch key before accepting requests."""
+        """Load and check the current epoch's four keys before serving; fails if any is missing."""
         await asyncio.to_thread(self._keys.current, self._now())
 
     async def publish_keys(self) -> dict[str, list[dict[str, str]]]:
+        """Exactly the current and, if present, previous month keys. No authentication."""
         return await asyncio.to_thread(self._keys.publish, self._now())
 
-    async def issue(self, context: Context, body: object) -> dict[str, object]:
-        """Validate identity and the entire batch before reserving any quota."""
+    async def _authenticate(self, context: Context) -> str:
         validated = self._validate_user(context)
         client = await validated if inspect.isawaitable(validated) else validated
         if not isinstance(client, str) or not client.strip():
             raise IssuanceError(401, "unauthorized")
-        blinded = body.get("blinded") if isinstance(body, dict) else None
+        return client
+
+    async def _meta_of(self, subject: str) -> int:
+        assigned = self._meta_for(subject)
+        meta = await assigned if inspect.isawaitable(assigned) else assigned
+        if not is_token_meta(meta):
+            raise ValueError("meta_for must return an integer from 0 to 3")
+        return int(meta)
+
+    async def meta(self, context: Context) -> dict[str, int]:
+        """The authenticated account's current metadata value."""
+        return {"meta": await self._meta_of(await self._authenticate(context))}
+
+    async def issue(self, context: Context, body: object) -> dict[str, object]:
+        """Validate identity, value and the entire batch before reserving any quota."""
+        client = await self._authenticate(context)
+        request = body if isinstance(body, dict) else {}
+        blinded = request.get("blinded")
         if not isinstance(blinded, list) or not 1 <= len(blinded) <= self._max_batch:
             raise IssuanceError(400, "bad_request")
+        meta = request.get("meta")
+        if not is_token_meta(meta):
+            raise IssuanceError(400, "bad_meta")
         now = self._now()
-        kid, key = await asyncio.to_thread(self._keys.current, now)
-        encoded_length = 4 * ((key.size_in_bytes() + 2) // 3)
+        try:
+            keys = await asyncio.to_thread(self._keys.current, now)
+        except KeyUnavailableError:
+            raise IssuanceError(503, "key_unavailable") from None
+        encoded_length = 4 * ((keys.k_len + 2) // 3)
         messages = []
         for value in blinded:
             if not isinstance(value, str) or len(value) != encoded_length:
@@ -96,25 +110,30 @@ class PrivacyTokenIssuer(Generic[Context]):
                 raw = base64.b64decode(value, validate=True)
             except (ValueError, binascii.Error):
                 raise IssuanceError(400, "bad_blinded") from None
-            if (
-                len(raw) != key.size_in_bytes()
-                or base64.b64encode(raw).decode() != value
-                or not 0 < int.from_bytes(raw, "big") < key.n
-            ):
+            if len(raw) != keys.k_len or base64.b64encode(raw).decode() != value:
                 raise IssuanceError(400, "bad_blinded")
             messages.append(raw)
+        # A stale value costs nothing: the client refetches /meta and retries. This
+        # precedes the range check, which depends on the value's key, so any mismatch
+        # is a 409.
+        if meta != await self._meta_of(client):
+            raise IssuanceError(409, "meta_mismatch")
+        key = keys.keys[meta]
+        if not all(0 < int.from_bytes(raw, "big") < key.key.n for raw in messages):
+            raise IssuanceError(400, "bad_blinded")
         reservation = self._quota.take(client, len(messages), now)
         allowed = await reservation if inspect.isawaitable(reservation) else reservation
         if not allowed:
             raise IssuanceError(429, "quota_exceeded")
-        signatures = await asyncio.to_thread(_sign_batch, key, messages)
+        # BlindSign every message with the key for this value. Nothing outlives the request.
+        signatures = await asyncio.to_thread(_sign_batch, key.key, messages)
         # Failed signing/audit leaves quota reserved; retries cannot exceed the cap.
         event: AuditEvent = {
             "ts": now.isoformat(),
             "event": "issue",
             "client": client,
             "count": len(signatures),
-            "epoch": kid,
+            "epoch": keys.epoch,
         }
         if self._on_issue is None:
             print(json.dumps(event), flush=True)
@@ -122,4 +141,4 @@ class PrivacyTokenIssuer(Generic[Context]):
             audit = self._on_issue(event)
             if inspect.isawaitable(audit):
                 await audit
-        return {"kid": kid, "signatures": signatures}
+        return {"kid": key.kid, "signatures": signatures}

@@ -9,6 +9,7 @@ export async function buildServer(
   await issuer.initialize();
 
   app.setErrorHandler((error, _request, reply) => {
+    reply.header('cache-control', 'no-store');
     if (error instanceof IssuanceError) {
       return reply.code(error.status).send({ error: error.code });
     }
@@ -21,9 +22,15 @@ export async function buildServer(
     return reply.code(status).send({ error: status === 500 ? 'internal_error' : 'bad_request' });
   });
 
+  // Public and unauthenticated: the same document for every caller, with no Vary on auth.
   app.get('/.well-known/jwks.json', async (_request, reply) => {
     reply.header('cache-control', 'public, max-age=3600');
     return issuer.publishKeys();
+  });
+
+  app.get('/meta', async (request, reply) => {
+    reply.header('cache-control', 'no-store');
+    return issuer.meta(request);
   });
 
   app.post('/issue', async (request, reply) => {
