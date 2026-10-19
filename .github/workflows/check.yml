@@ -52,6 +52,33 @@ jobs:
       - run: python -m pytest -q
       - if: matrix.package == 'token-issuer/python'
         run: python -m mypy
+  issuer-interop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: token-issuer/typescript/package-lock.json
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+      - run: python -m pip install -r token-issuer/python/requirements-dev.txt
+      - run: npm ci
+        working-directory: token-issuer/typescript
+      # Both tests skip when the other language is missing; the guards make CI fail instead.
+      - name: TypeScript signs, Python finalizes and verifies
+        run: test -d ../typescript/node_modules/tsx && python -m pytest -q test_interop.py
+        working-directory: token-issuer/python
+      - name: Python signs, blindrsa-ts finalizes and verifies
+        run: test -x "$FRAY_INTEROP_PYTHON" && node --import tsx --test test/interop.test.ts
+        working-directory: token-issuer/typescript
+        env:
+          FRAY_INTEROP_PYTHON: ${{ env.pythonLocation }}/bin/python
   docker:
     runs-on: ubuntu-latest
     timeout-minutes: 20

@@ -10,12 +10,16 @@ a new version. Explain privacy effects, including which party receives each
 field and whether it can connect reports to an account or browser activity.
 
 Use fictional domains, identities and report contents in tests. Generate test
-keys at runtime. Do not submit real ad captures, browsing history, account
+keys at runtime. The only committed key material is the public, clearly labelled
+TEST ONLY issuer keys and RFC vector in `token-issuer/test-fixtures/`, shared so
+both issuers sign with the same keys; never add others or use these for a
+deployment. Do not submit real ad captures, browsing history, account
 credentials, signing keys, deployment identifiers or production data.
 
 Run the checks in the root README and the tests for each affected Python package.
-CI also builds the issuer and OHTTP Docker images. Format JavaScript and
-TypeScript with `npm run format`.
+CI also runs the cross-language issuer interoperability tests and builds the
+issuer and OHTTP Docker images. Format JavaScript and TypeScript with
+`npm run format`.
 
 Dependencies are declared per package with committed npm lockfiles. Keep changes
 focused and explain new dependencies. Generated builds, local environments and
