@@ -3,42 +3,157 @@ import { test } from 'node:test';
 import { AEAD_AES_128_GCM, CipherSuite, KDF_HKDF_SHA256, KEM_DHKEM_X25519_HKDF_SHA256 } from 'hpke';
 import { KeyConfig, OHTTPServer } from 'ohttp-ts';
 import { FrayOhttpClient } from '../src/client.js';
-import { cipherSuite } from '../src/crypto.js';
+import {
+  INNER_TARGET,
+  MAX_ENVELOPE_BYTES,
+  MAX_MESSAGE_BYTES,
+  MAX_RESPONSE_BYTES,
+  REQUEST_TYPE,
+  RESPONSE_TYPE,
+} from '../src/http.js';
 import { createRelay } from '../src/relay.js';
-import { INNER_TARGET } from '../src/http.js';
+import { RELAY_SECRET, envelopeOfSize, publicKeys, standInGateway } from './helpers.js';
 
-test('client encrypts reports through an opaque relay and decrypts reference responses', async () => {
-  const keys = [await KeyConfig.generate(cipherSuite(), 1)];
-  const publicKeys = KeyConfig.serializeMultiple(keys);
-  const referenceServer = new OHTTPServer(keys);
+const relayUrl = 'https://relay.example/ohttp';
+const gatewayUrl = 'https://gateway.example/ohttp';
+
+test('client encrypts reports through an opaque relay and decrypts the gateway response', async () => {
   const envelope = { evidence: 'not-visible-to-relay', token: 'one-use-token' };
   const ciphertexts: Uint8Array[] = [];
+  const gateway = standInGateway(async (inner) => {
+    assert.equal(inner.url, INNER_TARGET);
+    assert.equal(inner.method, 'POST');
+    assert.deepEqual(Object.fromEntries(inner.headers), { 'content-type': 'application/json' });
+    assert.deepEqual(await inner.json(), envelope);
+    return new Response(null, { status: 200 });
+  });
   const relay = createRelay({
-    gatewayUrl: 'https://gateway.example/ohttp',
+    gatewayUrl,
+    relayAuth: RELAY_SECRET,
     fetch: async (request) => {
       ciphertexts.push(new Uint8Array(await request.clone().arrayBuffer()));
-      const decoded = await referenceServer.decapsulateRequest(request);
-      assert.equal(decoded.request.url, INNER_TARGET);
-      assert.equal(decoded.request.method, 'POST');
-      assert.deepEqual(Object.fromEntries(decoded.request.headers), {
-        'content-type': 'application/json',
-      });
-      assert.deepEqual(await decoded.request.json(), envelope);
-      return decoded.context.encapsulateResponse(new Response(null, { status: 200 }));
+      return gateway(request);
     },
   });
   const client = FrayOhttpClient.create(publicKeys);
   for (let i = 0; i < 2; i++) {
-    const result = await client.send(envelope, {
-      relayUrl: 'https://relay.example/ohttp',
-      fetch: relay,
-    });
+    const result = await client.send(envelope, { relayUrl, fetch: relay });
     assert.equal(result.status, 200);
     assert.equal(await result.text(), '');
   }
   assert.equal(ciphertexts.length, 2);
   assert.notDeepEqual(ciphertexts[0], ciphertexts[1]);
   assert.equal(new TextDecoder().decode(ciphertexts[0]).includes(envelope.evidence), false);
+});
+
+test('client sends only ciphertext and its media type: no metadata, credentials or redirects', async () => {
+  let outer: Request | undefined;
+  const gateway = standInGateway();
+  const client = FrayOhttpClient.create(publicKeys);
+  const result = await client.send(
+    { v: 3, kind: 'sighting' },
+    {
+      relayUrl,
+      fetch: async (request) => {
+        outer = request.clone();
+        return gateway(request);
+      },
+    },
+  );
+  assert.equal(result.status, 200);
+  assert.ok(outer);
+  assert.equal(outer.method, 'POST');
+  assert.equal(outer.url, relayUrl);
+  assert.equal(outer.credentials, 'omit');
+  assert.equal(outer.redirect, 'error');
+  assert.equal(outer.referrerPolicy, 'no-referrer');
+  assert.deepEqual(Object.fromEntries(outer.headers), { 'content-type': REQUEST_TYPE });
+});
+
+test('a 524288-byte envelope crosses every hop intact; one byte more never leaves the client', async () => {
+  assert.equal(MAX_ENVELOPE_BYTES, 524288);
+  const received: { envelope: unknown; metadata: Record<string, string | null> }[] = [];
+  const encapsulated: number[] = [];
+  const gateway = standInGateway(async (inner, outer) => {
+    received.push({
+      envelope: await inner.json(),
+      metadata: {
+        country: outer.headers.get('fray-country'),
+        device: outer.headers.get('fray-device'),
+        auth: outer.headers.get('fray-relay-auth'),
+      },
+    });
+    return new Response(null, { status: 200 });
+  });
+  const relay = createRelay({
+    gatewayUrl,
+    relayAuth: RELAY_SECRET,
+    fetch: async (request) => {
+      encapsulated.push((await request.clone().arrayBuffer()).byteLength);
+      return gateway(request);
+    },
+  });
+  const client = FrayOhttpClient.create(publicKeys);
+
+  const largest = envelopeOfSize(MAX_ENVELOPE_BYTES);
+  const result = await client.send(largest, { relayUrl, fetch: relay });
+  assert.equal(result.status, 200);
+  assert.ok(encapsulated[0] > MAX_ENVELOPE_BYTES && encapsulated[0] <= MAX_MESSAGE_BYTES);
+  assert.deepEqual(received, [
+    { envelope: largest, metadata: { country: 'ZZ', device: 'other', auth: RELAY_SECRET } },
+  ]);
+
+  let calls = 0;
+  await assert.rejects(
+    client.send(envelopeOfSize(MAX_ENVELOPE_BYTES + 1), {
+      relayUrl,
+      fetch: async () => {
+        calls++;
+        return new Response();
+      },
+    }),
+    /size limit/,
+  );
+  assert.equal(calls, 0);
+});
+
+test("the gateway's encrypted 503 reaches the caller as a retryable 503", async () => {
+  const gateway = standInGateway(() => new Response(null, { status: 503 }));
+  const relay = createRelay({ gatewayUrl, relayAuth: RELAY_SECRET, fetch: gateway });
+  const result = await FrayOhttpClient.create(publicKeys).send(
+    { v: 3, kind: 'sighting' },
+    { relayUrl, fetch: relay },
+  );
+  assert.equal(result.status, 503);
+  assert.equal(await result.text(), '');
+});
+
+test('a plain gateway refusal (403 without a valid relay secret) throws in the client', async () => {
+  const relay = createRelay({
+    gatewayUrl,
+    relayAuth: RELAY_SECRET,
+    fetch: async () => new Response('private diagnostics', { status: 403 }),
+  });
+  await assert.rejects(
+    FrayOhttpClient.create(publicKeys).send({ v: 3 }, { relayUrl, fetch: relay }),
+    /rejected/,
+  );
+});
+
+test('client bounds the encrypted response', async () => {
+  const client = FrayOhttpClient.create(publicKeys);
+  await assert.rejects(
+    client.send(
+      { v: 3 },
+      {
+        relayUrl,
+        fetch: async () =>
+          new Response(new Uint8Array(MAX_RESPONSE_BYTES + 1), {
+            headers: { 'content-type': RESPONSE_TYPE },
+          }),
+      },
+    ),
+  );
 });
 
 test('interop: decapsulates the published RFC 9458 Appendix A ciphertext', async () => {

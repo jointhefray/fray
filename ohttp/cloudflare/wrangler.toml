@@ -13,5 +13,13 @@ preview_urls = false
 [vars]
 GATEWAY_URL = "https://gateway.example.org/ohttp"
 
+# Secret binding, never a [vars] entry and never committed:
+#   FRAY_RELAY_AUTH  shared secret sent to the gateway as Fray-Relay-Auth, 32-512
+#                    base64/base64url characters, e.g. from `openssl rand -base64 48`.
+#                    Set it with `npx wrangler secret put FRAY_RELAY_AUTH`. The gateway
+#                    operator must accept the same value.
+# Without a valid FRAY_RELAY_AUTH the Worker answers 503 and forwards nothing.
+# Country comes from request.cf.country; no geolocation header is trusted.
+
 [observability]
 enabled = false

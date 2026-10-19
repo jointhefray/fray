@@ -4,16 +4,40 @@ import type { Socket } from 'cloudflare:sockets';
 import {
   MAX_KEY_BYTES,
   MAX_MESSAGE_BYTES,
+  MAX_RESPONSE_BYTES,
   readLimited,
   type Fetcher,
 } from '../../typescript/src/http.js';
+import {
+  COUNTRY_HEADER,
+  DEVICE_HEADER,
+  RELAY_AUTH_HEADER,
+  isCountry,
+  isDevice,
+  isRelaySecret,
+} from '../../typescript/src/metadata.js';
 
-type Connector = (
+export type Connector = (
   address: { hostname: string; port: number },
   options: { secureTransport: 'on' },
 ) => Socket;
 
-const MAX_WIRE_BYTES = MAX_MESSAGE_BYTES + 8192;
+const MAX_WIRE_BYTES = MAX_RESPONSE_BYTES + 8192;
+
+/**
+ * The relay's metadata, written with fixed names. Each value must already be in its
+ * exact form, which also rules out header injection. Nothing else is copied.
+ */
+function metadataLines(headers: Headers): string[] {
+  const country = headers.get(COUNTRY_HEADER);
+  const device = headers.get(DEVICE_HEADER);
+  const auth = headers.get(RELAY_AUTH_HEADER);
+
+  if (!isCountry(country) || !isDevice(device) || !isRelaySecret(auth))
+    throw new Error('Relay metadata required');
+
+  return [`Fray-Country: ${country}`, `Fray-Device: ${device}`, `Fray-Relay-Auth: ${auth}`];
+}
 
 /** Fixed-destination HTTPS over a Worker TLS socket, without fetch's automatic IP headers. */
 export function createTlsTransport(connect: Connector): Fetcher {
@@ -33,6 +57,8 @@ export function createTlsTransport(connect: Connector): Fetcher {
       throw new Error('Unsupported method');
 
     const isKeys = request.method === 'GET';
+    // Fail closed before connecting: ciphertext never travels without authenticated metadata.
+    const metadata = isKeys ? [] : metadataLines(request.headers);
     const lines = [
       `${request.method} ${url.pathname} HTTP/1.1`,
       `Host: ${url.host}`,
@@ -41,7 +67,8 @@ export function createTlsTransport(connect: Connector): Fetcher {
       `Accept: ${isKeys ? 'application/ohttp-keys' : 'message/ohttp-res'}`,
     ];
 
-    if (!isKeys) lines.push('Content-Type: message/ohttp-req', `Content-Length: ${body.length}`);
+    if (!isKeys)
+      lines.push('Content-Type: message/ohttp-req', `Content-Length: ${body.length}`, ...metadata);
 
     const preamble = new TextEncoder().encode(lines.join('\r\n') + '\r\n\r\n');
     const socket = connect(
@@ -98,7 +125,7 @@ export function createTlsTransport(connect: Connector): Fetcher {
       parser[HTTPParser.kOnBody] = (bytes, start, length) => {
         bodyBytes += length;
 
-        if (bodyBytes > (isKeys ? MAX_KEY_BYTES : MAX_MESSAGE_BYTES))
+        if (bodyBytes > (isKeys ? MAX_KEY_BYTES : MAX_RESPONSE_BYTES))
           throw new Error('Response too large');
 
         chunks.push(new Uint8Array(bytes.subarray(start, start + length)));

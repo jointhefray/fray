@@ -8,3 +8,5 @@ keys
 .env.*
 *.key.pem
 test_issuer.py
+test_interop.py
+interop_bridge.py

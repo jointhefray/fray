@@ -5,7 +5,7 @@ import {
   KEYS_TYPE,
   MAX_ENVELOPE_BYTES,
   MAX_KEY_BYTES,
-  MAX_MESSAGE_BYTES,
+  MAX_RESPONSE_BYTES,
   RESPONSE_TYPE,
   mediaType,
   readLimited,
@@ -62,6 +62,10 @@ export class FrayOhttpClient {
     return FrayOhttpClient.create(await readLimited(result, MAX_KEY_BYTES, signal));
   }
 
+  /**
+   * Encrypts the envelope (serialized UTF-8 ≤ 524288 bytes) and sends nothing else.
+   * Country and device form are added by the relay, never by the client.
+   */
   async send(envelope: unknown, options: ClientOptions): Promise<Response> {
     const relay = upstreamUrl(options.relayUrl, options.allowHttp);
     const bytes = new TextEncoder().encode(JSON.stringify(envelope));
@@ -94,7 +98,7 @@ export class FrayOhttpClient {
       throw new Error('OHTTP relay rejected the report');
     }
 
-    const encrypted = await readLimited(outer, MAX_MESSAGE_BYTES, signal);
+    const encrypted = await readLimited(outer, MAX_RESPONSE_BYTES, signal);
 
     return context.decapsulateResponse(
       new Response(encrypted, { headers: { 'content-type': RESPONSE_TYPE } }),

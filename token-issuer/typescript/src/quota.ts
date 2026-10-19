@@ -1,4 +1,4 @@
-// Per-client, per-UTC-day issuance quota (protocol.md §5: DAILY_QUOTA = 64
+// Per-client, per-UTC-day issuance quota (protocol.md §5: DAILY_QUOTA = 16
 // blinded messages/client/day; hard 429 beyond it).
 //
 // This default store is process-local and loses usage on restart. Production
@@ -14,9 +14,9 @@ export class DailyQuota implements QuotaStore {
   private days = new Map<number, Map<string, number>>();
   private newestDay = -Infinity;
 
-  constructor(private limit: number = 64) {
-    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 64) {
-      throw new Error('quota must be an integer from 1 to 64');
+  constructor(private limit: number = 16) {
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 16) {
+      throw new Error('quota must be an integer from 1 to 16');
     }
   }
 

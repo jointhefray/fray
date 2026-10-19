@@ -2,8 +2,10 @@
 
 The watchlist is the published, versioned list of watched brands.
 The JSON format is `v: 1`; the matching and authorization rules are defined
-below. Unmatched candidates are not looked up or submitted by the reporting flow.
-Publishing the list makes the reporting scope visible to users and partners.
+below. Unmatched candidates are not looked up or submitted by the passive
+(`sighting`) reporting flow. Publishing the list makes that reporting scope visible
+to users and partners. Background `search` reports are not gated by the watchlist
+([`protocol.md` §6.2](protocol.md#62-background-search-reports)).
 
 The public Fray watchlist is available at
 [`registry.jointhefray.org/v1/watchlist.json`](https://registry.jointhefray.org/v1/watchlist.json).
@@ -79,7 +81,7 @@ match, when a candidate exposes usable lookup data but no usable creative.
 
 ## Local authorization gate
 
-After Google returns an advertiser, evaluate its ID against the most specific matching entry. An authorized ID produces a local `authorized` result. A missing/malformed advertiser ID, missing authorization array, or absent/`open` policy produces `unknown`. Neither result is sent to Fray and neither consumes a report token.
+After Google returns an advertiser, evaluate its ID against the most specific matching entry. An authorized ID produces a local `authorized` result. A missing/malformed advertiser ID, missing authorization array, or absent/`open` policy produces `unknown`. Neither result is included in a `sighting` envelope, and a page with no likely unauthorized ad consumes no report token.
 
 Only a known ID absent from an explicit `closed` authorization list, or a known ID under `none` with an explicit empty list, produces `likely-unauthorized` and permits submission. The comparison happens locally and fails closed on incomplete data. It establishes an apparent authorization violation; investigation is still needed before calling an ad fraudulent.
 

@@ -3,6 +3,7 @@ import {
   KEYS_TYPE,
   MAX_KEY_BYTES,
   MAX_MESSAGE_BYTES,
+  MAX_RESPONSE_BYTES,
   REQUEST_TYPE,
   RESPONSE_TYPE,
   mediaType,
@@ -12,10 +13,27 @@ import {
   upstreamUrl,
   type Fetcher,
 } from './http.js';
+import {
+  COUNTRY_HEADER,
+  DEVICE_HEADER,
+  RELAY_AUTH_HEADER,
+  deviceFromHeaders,
+  normalizeCountry,
+  parseRelaySecret,
+} from './metadata.js';
 
 export interface RelayOptions {
   gatewayUrl: string;
   keysUrl?: string;
+
+  /** Shared secret sent as Fray-Relay-Auth. Required: without it the relay refuses to start. */
+  relayAuth: string | undefined;
+
+  /**
+   * The platform's IP geolocation for this request (Cloudflare `request.cf.country`,
+   * or a trusted proxy header). Omitted → every request is ZZ.
+   */
+  country?: (request: Request) => unknown;
   allowHttp?: boolean;
   timeoutMs?: number;
   fetch?: Fetcher;
@@ -23,6 +41,8 @@ export interface RelayOptions {
 
 /** The relay handles ciphertext only. It has neither keys nor a JSON parser. */
 export function createRelay(options: RelayOptions): Fetcher {
+  // Fail closed: never send unauthenticated metadata, and never send ciphertext without it.
+  const relayAuth = parseRelaySecret(options.relayAuth);
   const gateway = upstreamUrl(options.gatewayUrl, options.allowHttp);
   const keys = upstreamUrl(
     options.keysUrl ?? new URL('/ohttp-keys', gateway).href,
@@ -68,13 +88,21 @@ export function createRelay(options: RelayOptions): Fetcher {
     }
 
     try {
-      // Construct from scratch: cookies, authorization, forwarding and tracing headers are discarded.
+      // Construct from scratch: cookies, authorization, forwarding and tracing headers,
+      // the user agent, client hints and any client-supplied Fray-* headers are discarded.
+      // Only the derived country and device form, and the relay's own secret, are added.
       const upstream = await send(
         new Request(isKeys ? keys : gateway, {
           method: isKeys ? 'GET' : 'POST',
           headers: isKeys
             ? { accept: KEYS_TYPE }
-            : { 'content-type': REQUEST_TYPE, accept: RESPONSE_TYPE },
+            : {
+                'content-type': REQUEST_TYPE,
+                accept: RESPONSE_TYPE,
+                [COUNTRY_HEADER]: normalizeCountry(options.country?.(request)),
+                [DEVICE_HEADER]: deviceFromHeaders(request.headers),
+                [RELAY_AUTH_HEADER]: relayAuth,
+              },
           body,
           // Workers supports manual redirects; the status allowlist below rejects every 3xx.
           redirect: 'manual',
@@ -102,7 +130,7 @@ export function createRelay(options: RelayOptions): Fetcher {
 
       const result = await readLimited(
         upstream,
-        isKeys ? MAX_KEY_BYTES : MAX_MESSAGE_BYTES,
+        isKeys ? MAX_KEY_BYTES : MAX_RESPONSE_BYTES,
         signal,
       );
 

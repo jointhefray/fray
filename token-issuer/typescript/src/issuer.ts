@@ -1,9 +1,16 @@
-import { constants, privateDecrypt, publicEncrypt, timingSafeEqual } from 'node:crypto';
-import { KeyManager, type PublishedJwk } from './keys.js';
+import { KeyManager, KeyUnavailableError, type PublishedJwk } from './keys.js';
+import { blindSign, isTokenMeta, type TokenMeta } from './rsabssa.js';
 import { DailyQuota, type QuotaStore } from './quota.js';
 
 /** Return a stable quota subject after checking the partner's existing auth. */
 export type ValidateUser<Context> = (context: Context) => string | null | Promise<string | null>;
+
+/**
+ * Return the account's current metadata value, an integer from 0 to 3, for the subject that
+ * validateUser returned. Each value has its own epoch key. Values are issuer-defined; the
+ * protocol does not publish their meanings.
+ */
+export type MetaFor = (subject: string) => number | Promise<number>;
 
 export interface IssuanceEvent {
   ts: string;
@@ -18,9 +25,14 @@ export interface IssueResponse {
   signatures: string[];
 }
 
+export interface MetaResponse {
+  meta: TokenMeta;
+}
+
 export interface IssuerOptions<Context> {
   keysDir: string;
   validateUser: ValidateUser<Context>;
+  metaFor: MetaFor;
   quota?: QuotaStore;
   maxBatch?: number;
   clock?: () => Date;
@@ -30,7 +42,7 @@ export interface IssuerOptions<Context> {
 
 export class IssuanceError extends Error {
   constructor(
-    public readonly status: 400 | 401 | 429,
+    public readonly status: 400 | 401 | 409 | 429 | 503,
     public readonly code: string,
   ) {
     super(code);
@@ -38,7 +50,7 @@ export class IssuanceError extends Error {
   }
 }
 
-/** Authenticate, validate, reserve quota, then blind-sign an entire batch. */
+/** Authenticate, check the metadata value, reserve quota, then blind-sign an entire batch. */
 export class PrivacyTokenIssuer<Context> {
   private readonly keys: KeyManager;
   private readonly quota: QuotaStore;
@@ -50,43 +62,78 @@ export class PrivacyTokenIssuer<Context> {
       throw new Error('validateUser is required');
     }
 
-    this.maxBatch = options.maxBatch ?? 64;
-    if (!Number.isSafeInteger(this.maxBatch) || this.maxBatch < 1 || this.maxBatch > 64) {
-      throw new Error('maxBatch must be an integer from 1 to 64');
+    if (typeof options.metaFor !== 'function') {
+      throw new Error('metaFor is required');
+    }
+
+    this.maxBatch = options.maxBatch ?? 16;
+    if (!Number.isSafeInteger(this.maxBatch) || this.maxBatch < 1 || this.maxBatch > 16) {
+      throw new Error('maxBatch must be an integer from 1 to 16');
     }
 
     this.keys = new KeyManager(options.keysDir);
-    this.quota = options.quota ?? new DailyQuota(64);
+    this.quota = options.quota ?? new DailyQuota(16);
     this.clock = options.clock ?? (() => new Date());
   }
 
-  /** Warm the current epoch key before accepting traffic. */
+  /** Load and check the current epoch's four keys before serving; fails if any is missing. */
   async initialize(): Promise<void> {
-    await this.keys.currentKid(this.clock());
+    await this.keys.current(this.clock());
   }
 
-  /** Exactly the current and, if present, previous UTC month public keys. */
+  /** The current and, if present, previous UTC month's four public keys. No authentication. */
   publishKeys(): Promise<{ keys: PublishedJwk[] }> {
     return this.keys.jwks(this.clock());
   }
 
-  async issue(context: Context, body: unknown): Promise<IssueResponse> {
-    const client = await this.options.validateUser(context);
-    if (typeof client !== 'string' || !client.trim()) {
+  private async authenticate(context: Context): Promise<string> {
+    const subject = await this.options.validateUser(context);
+    if (typeof subject !== 'string' || !subject.trim()) {
       throw new IssuanceError(401, 'unauthorized');
     }
 
-    const blinded =
-      body && typeof body === 'object' && 'blinded' in body ? body.blinded : undefined;
+    return subject;
+  }
+
+  private async metaOf(subject: string): Promise<TokenMeta> {
+    const meta = await this.options.metaFor(subject);
+    if (!isTokenMeta(meta)) {
+      throw new Error('metaFor must return an integer from 0 to 3');
+    }
+
+    return meta;
+  }
+
+  /** The authenticated account's current metadata value. */
+  async meta(context: Context): Promise<MetaResponse> {
+    return { meta: await this.metaOf(await this.authenticate(context)) };
+  }
+
+  async issue(context: Context, body: unknown): Promise<IssueResponse> {
+    const client = await this.authenticate(context);
+
+    const request = body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
+    const { blinded, meta } = request;
     if (!Array.isArray(blinded) || blinded.length < 1 || blinded.length > this.maxBatch) {
       throw new IssuanceError(400, 'bad_request');
     }
 
-    const now = this.clock();
-    const kid = await this.keys.currentKid(now);
-    const key = await this.keys.epochKeys(kid);
-    const encodedLength = 4 * Math.ceil(key.kLen / 3);
+    if (!isTokenMeta(meta)) {
+      throw new IssuanceError(400, 'bad_meta');
+    }
 
+    const now = this.clock();
+    let set;
+    try {
+      set = await this.keys.current(now);
+    } catch (error) {
+      if (error instanceof KeyUnavailableError) {
+        throw new IssuanceError(503, 'key_unavailable');
+      }
+      throw error;
+    }
+
+    const encodedLength = 4 * Math.ceil(set.kLen / 3);
     const messages = blinded.map((value: unknown) => {
       if (
         typeof value !== 'string' ||
@@ -97,40 +144,36 @@ export class PrivacyTokenIssuer<Context> {
       }
 
       const bytes = Buffer.from(value, 'base64');
-      if (bytes.length !== key.kLen || bytes.toString('base64') !== value) {
-        throw new IssuanceError(400, 'bad_blinded');
-      }
-
-      const valueInt = BigInt('0x' + bytes.toString('hex'));
-      if (valueInt <= 0n || valueInt >= key.n) {
+      if (bytes.length !== set.kLen || bytes.toString('base64') !== value) {
         throw new IssuanceError(400, 'bad_blinded');
       }
 
       return bytes;
     });
 
+    // A stale value costs nothing: the client refetches /meta and retries. This precedes the
+    // range check, which depends on the value's key, so any mismatch is a 409.
+    if (meta !== (await this.metaOf(client))) {
+      throw new IssuanceError(409, 'meta_mismatch');
+    }
+
+    const key = set.keys[meta];
+    for (const message of messages) {
+      const valueInt = BigInt('0x' + message.toString('hex'));
+      if (valueInt <= 0n || valueInt >= key.n) {
+        throw new IssuanceError(400, 'bad_blinded');
+      }
+    }
+
     // Validate everything first; the store must reserve the whole batch atomically.
     if (!(await this.quota.take(client, messages.length, now))) {
       throw new IssuanceError(429, 'quota_exceeded');
     }
 
-    const signatures = messages.map((message) => {
-      // RFC 9474 §4.2: raw RSA private operation, then the public self-check.
-      // PSS encoding stays client-side. Node delegates the private operation to OpenSSL.
-      const signature = privateDecrypt(
-        { key: key.signingKey, padding: constants.RSA_NO_PADDING },
-        message,
-      );
-      const checked = publicEncrypt(
-        { key: key.verificationKey, padding: constants.RSA_NO_PADDING },
-        signature,
-      );
-      if (!timingSafeEqual(checked, message)) {
-        throw new Error('blind signing self-check failed');
-      }
-
-      return signature.toString('base64');
-    });
+    // BlindSign every message with the key for this value. Nothing outlives the request.
+    const signatures = messages.map((message) =>
+      blindSign(key.signingKey, message).toString('base64'),
+    );
 
     // Failed signing/audit does not refund quota: retries cannot exceed the daily cap.
     const event: IssuanceEvent = {
@@ -138,7 +181,7 @@ export class PrivacyTokenIssuer<Context> {
       event: 'issue',
       client,
       count: signatures.length,
-      epoch: kid,
+      epoch: set.epoch,
     };
 
     if (this.options.onIssue) {
@@ -147,6 +190,6 @@ export class PrivacyTokenIssuer<Context> {
       process.stdout.write(JSON.stringify(event) + '\n');
     }
 
-    return { kid, signatures };
+    return { kid: key.kid, signatures };
   }
 }
