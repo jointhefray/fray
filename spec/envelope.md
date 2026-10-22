@@ -5,6 +5,23 @@ Reports use wire version `v: 3`, defined in
 results page and carries one token. Versions 1 and 2 are retired: no deployed
 client sent them, and the schema no longer accepts them.
 
+Each kind has two modes, distinguished by the presence of `lookup`:
+
+- **Default (client-resolved).** The client looks up each advertiser itself, in the
+  user's browser, and sends the advertiser details. The envelope carries **no**
+  `lookup.atParameter` and **no** `batch_code`. The page's `at` value is a CSRF
+  token bound to the user's Google session and carries a precise timestamp; batch
+  codes are page-scoped request values. In default mode neither leaves the client:
+  the client uses them, with the Google account index from the same page, only
+  locally for its own lookup.
+- **Delegated (optional, a partner choice).** The client skips its own lookup and
+  sends the page's `lookup.atParameter` and each ad's `batch_code` instead of
+  advertiser details. The operator resolves the advertiser server-side
+  ([`protocol.md` §6.3](protocol.md#63-delegated-advertiser-resolution)).
+
+The client never sends the Google account index in either mode. `kind` is
+`sighting` or `search` in both modes.
+
 Clients must sanitize fields before serializing an envelope. Schema validation
 checks structure, not whether the user's query has been removed or whether
 `ad_html` was produced by the procedure below.
@@ -21,25 +38,28 @@ Neither a client library, a valid token nor this schema independently establishe
 | | `sighting` | `search` |
 | --- | --- | --- |
 | Trigger | A results page the user visited | A background search the host ran for a server-chosen keyword ([`protocol.md` §6.2](protocol.md#62-background-search-reports)) |
-| Ads reported | Likely unauthorized ads only, 1–20 | Every ad extracted from the page, 0–20 |
-| Watchlist match and authorization gate | Required for every ad | Not applied |
+| Ads reported | 1–20. Default: likely unauthorized ads only. Delegated: every watchlist-matched ad with a batch code, before its authorization is known | Every ad extracted from the page, 0–20 (in delegated mode, every ad with a batch code) |
+| Watchlist domain match | Required for every ad | Not applied |
+| Authorization gate | Default: client, before submission. Delegated: operator, after server-side resolution | Not applied |
 | Query redaction | Required (creative, advertiser text, click URL, `ad_html`) | Not applied. Every other sanitization rule applies |
 | `keyword` | Optional, partner opt-in only; absent by default | Required |
 | `outcome` | Not allowed | Required |
 | `device` | Optional; the collector uses the relay's value when absent | Required |
-| `lookup` | Required | Optional |
-| Per-ad `batch_code` | Required | Optional |
-| Per-ad `advertiser` | Object | Object, or `null` when the lookup failed |
+| `lookup` | Default: not allowed. Delegated: required | Default: not allowed. Delegated: required |
+| Per-ad `batch_code` | Default: not allowed. Delegated: required | Default: not allowed. Delegated: required |
+| Per-ad `advertiser` | Default: object. Delegated: not allowed | Default: object, or `null` when the lookup failed. Delegated: not allowed |
 | Submission | When ready | After a uniformly random delay of 60–900 s from search completion |
 
-Both kinds carry advertiser details, sanitized creatives, sanitized ad HTML and
-platform-issued values. **These include page-scoped request values and platform
-click data, not anonymous ad fields.** `lookup.atParameter` includes a precise
-13-digit timestamp. The click links kept in `creative.click_url` and `ad_html`
-carry `gclid` and `ai` values that the platform issued, including precise click
-timestamps inside `gclid`. Recipients can associate these values with a Google
-page, request or click; Google can correlate them with its own records. Repeated
-values can also connect reports.
+Both kinds carry sanitized creatives, sanitized ad HTML and platform-issued
+values in both modes. **Default reports are not unlinkable:** the click links kept
+in `creative.click_url` and `ad_html` carry `gclid` and `ai` values that the
+platform issued, including precise click timestamps inside `gclid`. Recipients can
+associate these values with a Google click, and Google can correlate them with its
+own records. **Delegated reports also carry page-scoped request values:**
+`lookup.atParameter` is bound to the user's Google session and includes a precise
+13-digit timestamp, and batch codes belong to the page's requests. Recipients can
+associate them with a Google page or request. Repeated values can connect reports
+in either mode.
 
 OHTTP separates the client's network IP from report contents when its relay and
 gateway are independently operated. It does not remove payload correlation, and
@@ -58,11 +78,11 @@ fields unlinkable.
 | `kind` | `"sighting"` | `"search"` | Selects the report kind. |
 | `watchlist_version` | Required | Not allowed | Integer ≥ 1: the fresh watchlist version the ads were matched against. |
 | `platform` / `surface` | Required | Required | Exactly `google.com` / `search`. |
-| `observed_hour` | Required | Required | `YYYY-MM-DDTHH:00:00Z`, a real UTC hour bucket taken at capture. This field is coarse; `lookup.atParameter`, `click_url` and `ad_html` still carry precise timestamps. |
+| `observed_hour` | Required | Required | `YYYY-MM-DDTHH:00:00Z`, a real UTC hour bucket taken at capture. This field is coarse; `click_url` and `ad_html`, and in delegated mode `lookup.atParameter`, still carry precise timestamps. |
 | `device` | Optional | Required | A [device value](#device-form). On a `sighting`, it overrides the relay's value; when absent, the relay's value is used. On a `search`, it is the device form the search presented to the platform, which can differ from the browser's own. |
 | `keyword` | Optional (partner opt-in) | Required | 1–200 characters, no C0 control characters or DEL, at least one non-whitespace character. Not redacted. On a `sighting`: absent by default; present only when the partner has opted in to sending the passive search query, as the page's search query, NFC-normalized and trimmed ([Sighting construction](#sighting)). On a `search`: the job keyword exactly as the host received it from its job source; never re-derived from the page or its `q=` parameter. |
 | `outcome` | Not allowed | Required | `ok`, `blocked` or `error`; see [Search construction](#search). |
-| `lookup` | Required | Optional | Page-level lookup values; see [Nested objects](#nested-objects). |
+| `lookup` | Delegated only (required) | Delegated only (required) | Page-level lookup values for server-side resolution; see [Nested objects](#nested-objects). Not allowed in default mode. |
 | `ads` | 1–20 sighting ads | 0–20 search ads | See [Per-ad fields](#per-ad-fields). |
 | `token` | Required | Required | One unused blind-signed token from the issuance protocol; see [Nested objects](#nested-objects). |
 
@@ -76,10 +96,10 @@ errors at every level.
 | `brand` | Required | Not allowed | The matched watchlist entry's primary `domain`. |
 | `position` | Not allowed | Required | Integer 1–50: the ad's 1-based position among the ads on the results page, in page order. |
 | `observed_domain` | Required | Required | The normalized hostname from the ad's display URL: lowercase letter/digit/hyphen labels with an alphabetic top-level label, at most 253 characters; not a URL. On a sighting it equals `brand` or is a subdomain of it. |
-| `ad_id` | Optional | Optional | The platform's identifier for the served creative, as returned by the advertiser lookup. It equals the `ai=` parameter of the ad's main click link. 1–512 characters, none in U+0000–U+0020 or U+007F. |
+| `ad_id` | Optional | Optional | The platform's identifier for the served creative, as returned by the advertiser lookup. It equals the `ai=` parameter of the ad's main click link. 1–512 characters, none in U+0000–U+0020 or U+007F. Allowed in both modes. |
 | `creative` | Required | Required | A sanitized [creative](#creative-fields) with a required `title`, or `null` when extraction exposes the ad without a usable creative. Null does not bypass the sighting domain match. |
-| `advertiser` | Required, object | Required, object or `null` | The advertiser returned by the platform's lookup. `null` only on a search ad whose lookup failed. |
-| `batch_code` | Required | Optional | The ad's original nonempty opaque batch string, at most 8064 characters, none in U+0000–U+0020 or U+007F. Never truncated. |
+| `advertiser` | Default: required, object. Delegated: not allowed | Default: required, object or `null`. Delegated: not allowed | The advertiser returned by the client's lookup. `null` only on a default search ad whose lookup failed. |
+| `batch_code` | Delegated only (required) | Delegated only (required) | The ad's original nonempty opaque batch string, at most 8064 characters, none in U+0000–U+0020 or U+007F, for server-side resolution. Never truncated. Not allowed in default mode. |
 | `ad_html` | Required, string or `null` | Required, string or `null` | Markup of the ad's container produced by the [`ad_html` sanitization](#ad_html-sanitization), at most 65536 UTF-8 bytes, or `null`. |
 
 `ad_id` is platform data the platform can correlate with its own records, like the
@@ -94,13 +114,16 @@ click link it is taken from. It adds no value beyond the `ai=` parameter that
 | `advertiser.name` | Required nonblank platform-returned name, at most 200 characters, no C0 control characters or DEL. |
 | `advertiser.country` | Optional nonblank advertiser country label or code, at most 100 characters, same character rule. It describes the advertiser, not the client. |
 | `advertiser.targeting` | Optional. The platform's raw "why this ad" targeting reason codes from the advertiser lookup, restricted to tuples of small non-negative integers or `null`: at most 32 unique tuples, each of 1–8 elements. The first element is the reason category, an integer 0–65535; the rest are the platform's source sub-codes, each an integer 0–65535 or `null`. A bare category number in the platform data is carried as a one-element tuple. The client drops any entry containing anything else, so no value or free text can be carried. `[]` means the lookup resolved but returned no usable targeting information: no targeting block, or one whose reasons were absent or all invalid. The field is absent when the lookup failed, or when it resolved with an explicitly empty reasons list. The collector maps categories to names with the operator's own table, which this protocol does not publish. Not query-redacted: the field holds only integers. |
-| `lookup.kind` | Exactly `google-batchexecute`. |
-| `lookup.atParameter` | The page's original string: 10–512 URL-safe token characters, followed by `:`, `%3A` or `%3a`, followed by exactly 13 decimal digits. At most 528 characters. Never synthesized. |
+| `lookup.kind` | Delegated mode only. Exactly `google-batchexecute`. |
+| `lookup.atParameter` | Delegated mode only. The page's original lookup token, bound to the user's Google session: 10–512 URL-safe token characters, followed by `:`, `%3A` or `%3a`, followed by exactly 13 decimal digits. At most 528 characters. Never synthesized. |
 | `token.issuer` | The issuer's name, in the same domain form as `observed_domain`. |
 | `token.kid` | `ep-YYYY-MM`, the epoch ID. The signing key is the issuer's JWK `<kid>.<meta>`. |
 | `token.meta` | Integer 0, 1, 2 or 3, the only metadata values that exist: two bits in total, deliberately too few to identify anyone. This is the issuer-assigned public metadata the token was issued with; it selects which of the epoch's four keys signed the token (JWK `kid` `<kid>.<meta>`). The issuer defines its meaning privately ([`protocol.md` §4.1](protocol.md#41-issuer-metadata)). |
 | `token.msg` | The 32-byte token message, base64 or base64url, 43–45 characters. |
 | `token.sig` | The finalized RFC 9474 blind signature (`RSABSSA-SHA384-PSS-Deterministic`) over `msg` under key `<kid>.<meta>`, base64 or base64url, 300–1400 characters. |
+
+`advertiser` and its fields appear only in default envelopes; `lookup` appears only
+in delegated envelopes.
 
 ## Creative fields
 
@@ -121,12 +144,17 @@ no additional properties. Destination domains are not inferred or sent.
 Every envelope is built from an explicit allowlist of fields. Do not include
 `adKey`, `atParameterEncoded`, raw lookup responses, cookies, account data, page
 URLs, explicit query fields (other than `keyword` where this contract allows it) or other
-properties from the candidate. Unknown fields are schema errors. Copy
-`lookup.atParameter` and each `batch_code` exactly as extracted: preserve the
-colon or percent-encoded colon spelling; do not decode, re-encode, shorten, strip
-the timestamp from or replace these values. Copy `ad_id` as the lookup returned it.
-These fields deliberately retain their page/request association. Copy `token.kid` and
-`token.meta` as stored with the token at issuance.
+properties from the candidate. Unknown fields are schema errors. Never send the
+Google account index from the page, in either mode.
+
+In default mode, the client uses the page's `at` value, the batch codes and the
+account index only for its own advertiser lookup and does not put them in the
+envelope. In delegated mode, copy `lookup.atParameter` and each `batch_code`
+exactly as extracted: preserve the colon or percent-encoded colon spelling; do not
+decode, re-encode, shorten, strip the timestamp from or replace these values. They
+deliberately retain their page/request association. Copy `ad_id` as the lookup
+returned it. Copy `token.kid` and `token.meta` as stored with the token at
+issuance.
 
 ### Sighting
 
@@ -137,16 +165,24 @@ These fields deliberately retain their page/request association. Copy `token.kid
    `authorized_domains`: this flow looks up the advertiser behind the ad. Brand
    terms alone do not trigger this flow, and authorized-domain aliases are not
    automatically added as watched domains.
-2. Look up each matched ad's advertiser and evaluate its ID locally against the
-   most specific matching entry's explicit closed/none authorization list
-   ([`watchlist.md`](watchlist.md)). Only `likely-unauthorized` ads are reported.
-   Authorized and inconclusive identities stay local. Recheck the current policy
-   after lookup and after token reservation, and drop any ad that is no longer
-   likely unauthorized. If no ad remains, nothing is sent and no token is spent.
-   Envelope schema validation does not fetch or enforce that authorization policy.
+2. **Default mode.** Look up each matched ad's advertiser and evaluate its ID
+   locally against the most specific matching entry's explicit closed/none
+   authorization list ([`watchlist.md`](watchlist.md)). Only `likely-unauthorized`
+   ads are reported, with their advertiser details. Authorized and inconclusive
+   identities stay local. Recheck the current policy after lookup and after token
+   reservation, and drop any ad that is no longer likely unauthorized. If no ad
+   remains, nothing is sent and no token is spent. Envelope schema validation does
+   not fetch or enforce that authorization policy.
+
+   **Delegated mode.** Skip the lookup and the authorization gate. Every
+   watchlist-matched ad that has a batch code is reported, with its `batch_code` and
+   no advertiser, before its authorization is known; the operator resolves the
+   advertiser and applies the gate. If no ad matches, nothing is sent and no token
+   is spent.
 3. Put the qualifying ads extracted together from one results page into one
-   envelope, with that page's `lookup.atParameter` and one token. An envelope holds
-   at most 20 ads.
+   envelope with one token. A delegated envelope also carries that page's
+   `lookup.atParameter`; a default envelope carries neither it nor batch codes. An
+   envelope holds at most 20 ads.
 4. Sanitize every ad with the [creative sanitization rules](#creative-sanitization-client-side-before-construction),
    including query redaction, and the [`ad_html` sanitization](#ad_html-sanitization).
    A query match alone does not discard the entire URL or creative.
@@ -174,8 +210,10 @@ server-chosen keyword ([`protocol.md` §6.2](protocol.md#62-background-search-re
 4. `ads` lists every ad extracted from the page, in page order, each with its
    `position`. No watchlist match or authorization gate is applied: authorized
    advertisers and unwatched domains are reported too.
-5. Look up each ad's advertiser. Use `advertiser: null` when the lookup fails.
-   Include `lookup.atParameter` and `batch_code` when the page exposes them.
+5. **Default mode:** look up each ad's advertiser, and use `advertiser: null` when
+   the lookup fails; send no `lookup` or `batch_code`. **Delegated mode:** skip the
+   lookup and send the page's `lookup.atParameter` and each ad's `batch_code`, with
+   no advertiser; an ad without a batch code cannot be included.
 6. Apply every sanitization rule below except query redaction. The keyword is
    chosen by the job source, not typed by the user, and is reported in full in
    `keyword`.
@@ -185,8 +223,8 @@ server-chosen keyword ([`protocol.md` §6.2](protocol.md#62-background-search-re
    resets its delay.
 
 The collector persists the complete accepted envelope for the raw-report retention
-period. Lookup values, batch codes, `ad_id` and `ad_html` therefore remain present
-in stored reports. They are excluded from grouping keys, which use the observed
+period. `ad_id`, `ad_html` and, in delegated envelopes, the lookup token and batch
+codes therefore remain present in stored reports. They are excluded from grouping keys, which use the observed
 domain, advertiser identity and optional creative title. Excluding them from
 grouping is not a claim that they cannot be used for correlation.
 
@@ -280,20 +318,23 @@ conditions, applies unchanged.
    served. Every other composed URL field still loses its query string and fragment.
 
 3. **No added user identifiers.** Do not append cookies, storage values, account
-   data, extension install IDs or page URLs. Remove `authuser` from `click_url`
-   and from `ad_html` URLs. The original `lookup.atParameter`, each `batch_code`,
-   `ad_id`, and the platform's own values inside `click_url` and `ad_html` are the
-   permitted page-scoped platform values. Do not apply text or URL redaction to
+   data, extension install IDs or page URLs, and never send the page's Google
+   account index. Remove `authuser` from `click_url` and from `ad_html` URLs.
+   `ad_id` and the platform's own values inside `click_url` and `ad_html` are the
+   permitted platform values in both modes; the original `lookup.atParameter` and
+   each `batch_code` are permitted in delegated mode only. Do not apply text or URL redaction to
    the opaque fields and claim they became anonymous.
 4. **Hour bucketing** applies to `observed_hour` at capture, not at send. Do not
-   add another client observation timestamp. The original `lookup.atParameter`
-   retains its precise platform timestamp, and the `gclid` values in `click_url`
-   and `ad_html` carry precise click timestamps. Hour bucketing does not hide
+   add another client observation timestamp. The `gclid` values in `click_url`
+   and `ad_html` carry precise click timestamps, and in delegated mode the original
+   `lookup.atParameter` retains its precise platform timestamp. Hour bucketing does not hide
    capture time from anyone holding those values.
 5. **Watchlist and authorization checks** (`sighting` only). A fresh domain match
-   and a locally confirmed likely unauthorized advertiser are required for every
-   reported ad. Non-matching, authorized and inconclusive candidates are not
-   reported. A `search` envelope applies neither check.
+   is required for every reported ad in both modes. In default mode, a locally
+   confirmed likely unauthorized advertiser is also required, and authorized and
+   inconclusive candidates are not reported. In delegated mode the client applies
+   only the domain match; the operator applies the authorization gate after
+   resolving the advertiser. A `search` envelope applies neither check.
 
 ### Redaction exemptions
 
@@ -373,9 +414,14 @@ clone, in a DOM context such as a content script or offscreen document:
    `embed`, `applet`, `link`, `meta`, `base`, `form`, `input`, `textarea`,
    `select`, `foreignObject`. Remove comments and processing instructions.
 2. **Remove attributes.** Remove every attribute whose name begins with `on`, and
-   every `style`, `srcdoc`, `nonce`, `integrity` and `ping` attribute. Remove any
-   attribute whose value, after removing ASCII whitespace and control characters,
-   begins case-insensitively with `javascript:`, `vbscript:` or `data:`.
+   every `style`, `srcdoc`, `nonce`, `integrity`, `ping` and `data-aavs` attribute.
+   `data-aavs` holds the ad's batch code, which is lookup material and never travels
+   inside `ad_html` in either mode. Remove any attribute whose value, after removing
+   ASCII whitespace and control characters, begins case-insensitively with
+   `javascript:`, `vbscript:` or `data:`. The ad's `jsdata` attributes are kept,
+   because ad parsers use them to identify the ad. Their last field is a page-scoped
+   key into the results page's own data, not a batch code, and is not usable for a
+   lookup without that page.
 3. **Process URL attributes.** Treat an attribute value as a URL when, trimmed, it
    begins with `https://`, `http://`, `//` or `/`. This covers `href`, `src`,
    `srcset` and `data-*` URL attributes such as `data-rw` and `data-pcu`.
@@ -483,7 +529,7 @@ rejected. The `advertiser.country` field describes the advertiser, not the clien
 All values below are fictional. Token fields are abbreviated for display and do
 not meet the schema's length limits as shown.
 
-### `sighting`
+### `sighting` (default mode)
 
 ```json
 {
@@ -493,10 +539,6 @@ not meet the schema's length limits as shown.
   "platform": "google.com",
   "surface": "search",
   "observed_hour": "2026-10-14T14:00:00Z",
-  "lookup": {
-    "kind": "google-batchexecute",
-    "atParameter": "illustrative_token%3a1791987634567"
-  },
   "ads": [
     {
       "brand": "example-fashion.com",
@@ -514,7 +556,6 @@ not meet the schema's length limits as shown.
         "country": "United Kingdom",
         "targeting": [[3, 1], [12, null]]
       },
-      "batch_code": "illustrative-opaque-batch-value-1",
       "ad_html": "<div data-text-ad=\"1\"><a href=\"https://www.google.com/aclk?sa=L&amp;ai=ILLUSTRATIVE_AI_1&amp;gclid=ILLUSTRATIVE_GCLID_1\"><span>‹q› Clearance – Up to 70% Off</span></a><span>shop.example-fashion.com</span></div>"
     }
   ],
@@ -529,9 +570,10 @@ not meet the schema's length limits as shown.
 ```
 
 This sighting has no `device`, so the collector uses the relay's value, and no
-`keyword`, which is the default.
+`keyword`, which is the default. As a default-mode envelope it carries the
+advertiser details and no `lookup` or `batch_code`.
 
-### `search`
+### `search` (default mode)
 
 ```json
 {
@@ -543,10 +585,6 @@ This sighting has no `device`, so the collector uses the relay's value, and no
   "device": "android-mobile",
   "keyword": "example bank login",
   "outcome": "ok",
-  "lookup": {
-    "kind": "google-batchexecute",
-    "atParameter": "illustrative_token%3a1791969634567"
-  },
   "ads": [
     {
       "position": 1,
@@ -562,7 +600,6 @@ This sighting has no `device`, so the collector uses the relay's value, and no
         "name": "Example Bank plc",
         "country": "United Kingdom"
       },
-      "batch_code": "illustrative-opaque-batch-value-2",
       "ad_html": "<div data-text-ad=\"1\"><a href=\"https://www.google.com/aclk?sa=L&amp;ai=ILLUSTRATIVE_AI_2&amp;gclid=ILLUSTRATIVE_GCLID_2\"><span>Example Bank Login – Official Site</span></a></div>"
     },
     {
@@ -586,4 +623,46 @@ This sighting has no `device`, so the collector uses the relay's value, and no
 ```
 
 The keyword appears unredacted in the creatives. The second ad's advertiser lookup
-failed, and it has no batch code or usable `ad_html`.
+failed, and it has no usable `ad_html`.
+
+### `sighting` (delegated mode)
+
+```json
+{
+  "v": 3,
+  "kind": "sighting",
+  "watchlist_version": 12,
+  "platform": "google.com",
+  "surface": "search",
+  "observed_hour": "2026-10-14T16:00:00Z",
+  "lookup": {
+    "kind": "google-batchexecute",
+    "atParameter": "illustrative_token%3a1791994834567"
+  },
+  "ads": [
+    {
+      "brand": "example-fashion.com",
+      "observed_domain": "example-fashion.com",
+      "creative": {
+        "title": "Example Fashion Sale – Free Delivery",
+        "display_url": "example-fashion.com",
+        "click_url": "https://www.google.com/aclk?sa=L&ai=ILLUSTRATIVE_AI_3&gclid=ILLUSTRATIVE_GCLID_3"
+      },
+      "batch_code": "illustrative-opaque-batch-value-3",
+      "ad_html": "<div data-text-ad=\"1\"><a href=\"https://www.google.com/aclk?sa=L&amp;ai=ILLUSTRATIVE_AI_3&amp;gclid=ILLUSTRATIVE_GCLID_3\"><span>Example Fashion Sale – Free Delivery</span></a><span>example-fashion.com</span></div>"
+    }
+  ],
+  "token": {
+    "issuer": "issuer.partner.example",
+    "kid": "ep-2026-10",
+    "meta": 1,
+    "msg": "Rk2…base64…",
+    "sig": "Lm8…base64…"
+  }
+}
+```
+
+This envelope carries the page's lookup token and the ad's batch code instead of
+advertiser details. The client matched the ad's domain against the watchlist but
+did not look up the advertiser or apply the authorization gate; the operator does
+both after resolving it.
