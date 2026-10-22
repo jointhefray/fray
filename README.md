@@ -30,9 +30,12 @@ Relay and gateway operators must be independent for the OHTTP trust split to hol
 - **Page reports.** Reports use envelope `v: 3`: one envelope per Google results
   page, carrying one token. A `sighting` reports the likely unauthorized ads from a
   page the user visited. A `search` reports every ad from a background search that
-  a host ran for a server-chosen keyword. Both carry advertiser details, sanitized
-  creatives and sanitized ad HTML, per-ad batch codes and the page's `at` value.
-  Envelopes are limited to 524288 bytes and each `ad_html` to 65536 bytes.
+  a host ran for a server-chosen keyword. By default the client resolves the
+  advertiser itself, and reports carry advertiser details, sanitized creatives and
+  sanitized ad HTML, but neither per-ad batch codes nor the page's session-bound
+  `at` value. An optional delegated mode skips the client lookup and sends those
+  values instead of advertiser details, for the operator to resolve. Envelopes are
+  limited to 524288 bytes and each `ad_html` to 65536 bytes.
   Versions 1 and 2 are retired.
 - **Four-key tokens.** Tokens are RFC 9474 blind RSA signatures
   (`RSABSSA-SHA384-PSS-Deterministic`). Each epoch has exactly four issuer keys,
