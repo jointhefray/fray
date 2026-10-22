@@ -296,7 +296,8 @@ partner out of conformance with this profile. Transport limits are in
    **Passive query (partner opt-in).** By default the client redacts the query and
    sends none. A partner may opt in to sending it: the sighting then carries
    `keyword`, the page's search query, NFC-normalized and trimmed, 1–200 characters,
-   and omits it otherwise. Creative and `ad_html` redaction is unchanged either way.
+   and omits it otherwise. When the keyword is sent, query redaction is skipped for
+   that sighting; every other sanitization rule still applies.
 
    **`sighting`, delegated mode:** the client skips the lookup and the authorization
    gate and reports every watchlist-matched ad that has a batch code, with the

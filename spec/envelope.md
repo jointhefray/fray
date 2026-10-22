@@ -190,8 +190,11 @@ issuance.
    the query is redacted and not sent. A partner may opt in to sending the passive
    search query. With that option enabled, set `keyword` to the page's search query,
    NFC-normalized and trimmed, when the result is 1–200 characters and meets the
-   field's character rule; otherwise omit it. Creative and `ad_html` redaction is
-   unchanged either way. The collector accepts a sighting `keyword` only from
+   field's character rule; otherwise omit it. When `keyword` is sent, skip query
+   redaction for that sighting (creative, advertiser text, `click_url` and
+   `ad_html`), as for a `search`: the query travels in clear anyway. Every other
+   sanitization rule still applies. When it is not sent, redact as in step 4. The
+   collector accepts a sighting `keyword` only from
    issuers configured to send it ([`protocol.md` §6](protocol.md#6-submission-and-verification)).
 6. Enforce the [size limits](#size).
 
@@ -395,9 +398,9 @@ evidence investigators validate. Consequently:
   and parameter values only where it occurs outside the protected spans.
 - Protected platform tokens are left intact, including where a query happens to
   appear inside one.
-- When the partner has opted in to sending the passive search query, the sighting
-  carries the user's query in clear in `keyword`, so this redaction no longer keeps
-  the query from recipients; it still applies to the creative and `ad_html`.
+- When the partner has opted in to sending the passive search query and the sighting
+  carries it in `keyword`, query redaction is skipped for that sighting: the query
+  is sent in clear anyway, and redacting the ad copy would only corrupt it.
 
 ## `ad_html` sanitization
 
