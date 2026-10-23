@@ -85,6 +85,8 @@ After Google returns an advertiser, evaluate its ID against the most specific ma
 
 Only a known ID absent from an explicit `closed` authorization list, or a known ID under `none` with an explicit empty list, produces `likely-unauthorized` and permits submission. The comparison happens locally and fails closed on incomplete data. It establishes an apparent authorization violation; investigation is still needed before calling an ad fraudulent.
 
+This gate runs on the client in the default (client-resolved) mode. In the optional delegated mode ([`protocol.md` §6.3](protocol.md#63-delegated-advertiser-resolution)) the client applies only the domain match above; the operator resolves the advertiser server-side and applies these same rules.
+
 Re-read the current cached policy after lookup and after any asynchronous token reservation. If the domain is removed, authorizations change, or the list expires, apply the new decision before sending. The host may display advertiser ID/name/country and the decision in its local UI. No lookup response or evaluation is persisted in the watchlist cache.
 
 ## Background cache and update cadence

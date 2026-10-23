@@ -1,6 +1,6 @@
 # Fray reporting protocol
 
-How a partner extension contributes ad reports using blind-signed tokens and an encrypted relay. Reports deliberately retain page-scoped request values and the platform's ad markup and click data, including precise timestamps; these are not unlinkable payloads. The relay adds the client's coarse country and device form. The transport separates the client IP from report contents when relay and gateway are independently operated. Application data, collusion and traffic analysis remain separate considerations (§7).
+How a partner extension contributes ad reports using blind-signed tokens and an encrypted relay. Reports deliberately retain the platform's ad markup and click data, including precise timestamps, and in the optional delegated mode also page-scoped request values; these are not unlinkable payloads. The relay adds the client's coarse country and device form. The transport separates the client IP from report contents when relay and gateway are independently operated. Application data, collusion and traffic analysis remain separate considerations (§7).
 
 This document defines the contract between participating components:
 
@@ -17,7 +17,7 @@ This document defines the contract between participating components:
 
 After the user has explicitly agreed to participate, the client asks its **partner's own issuer** once per UTC day, on a fixed schedule, for a fixed batch of tokens, using RSA blind signatures (RFC 9474). Each epoch has exactly four issuer keys, one per public metadata value, and the key that signs a token shows which of the four values the issuer assigned to the account (§4.1). The issuer authenticates the client with
 the partner's existing account machinery and enforces a quota, but — because the messages
-are blinded — never sees the token values it signs. For a passive **`sighting`**, the background matches each ad's displayed domain against a fresh watchlist, looks up the advertiser, and checks its ID against that entry's complete authorized ID list locally. Only ads with a known unlisted ID under a `closed`/`none` policy are reported: the qualifying ads from one results page go into one envelope containing their sanitized creatives, ad HTML and advertiser details, each ad's original batch code and the page's original atParameter. A host that runs server-issued background searches may also submit one **`search`** envelope per results page, listing every ad on it (§6.2). Each envelope carries one unused token and is encrypted for the **OHTTP gateway**. A **relay** forwards the ciphertext without client-identifying HTTP headers, adding only a coarse country and device form it derives from the connection. The gateway decrypts the report and submits it to a private collector. The collector verifies the token against the issuer's published epoch keys
+are blinded — never sees the token values it signs. For a passive **`sighting`**, the background matches each ad's displayed domain against a fresh watchlist, looks up the advertiser, and checks its ID against that entry's complete authorized ID list locally. Only ads with a known unlisted ID under a `closed`/`none` policy are reported: the qualifying ads from one results page go into one envelope containing their sanitized creatives, ad HTML and advertiser details. In this default mode the page's session-bound lookup token and batch codes never leave the client. A partner may instead choose **delegated** mode, in which the client skips its own lookup and sends those page values for the operator to resolve and check (§6.3). A host that runs server-issued background searches may also submit one **`search`** envelope per results page, listing every ad on it (§6.2). Each envelope carries one unused token and is encrypted for the **OHTTP gateway**. A **relay** forwards the ciphertext without client-identifying HTTP headers, adding only a coarse country and device form it derives from the connection. The gateway decrypts the report and submits it to a private collector. The collector verifies the token against the issuer's published epoch keys
 and burns it in a spent-set, then delivers accepted sightings to the operator's analysis systems and search results to the issuing partner's job sink. A valid token proves issuance under a configured partner key. It only represents a rate-limited real account when that partner supplies real authentication and an appropriate quota store; the local mocks do not establish this property. Fresh token values do not carry an account identifier.
 
 ### 1.1 Informed explicit consent before enrollment
@@ -33,8 +33,7 @@ Before the user's affirmative choice, the partner MUST clearly explain:
   the local authorization check, reporting of likely unauthorized advertisers and,
   for hosts that run them, background searches.
 - The evidence sent: sanitized ad creative, click URLs and ad HTML; the platform's
-  ad identifiers; advertiser details; original Google batch/at request values
-  including the precise at timestamp; and the platform click data kept in click
+  ad identifiers; advertiser details; and the platform click data kept in click
   URLs and ad HTML, including `gclid` values with precise click timestamps.
   Reports can also include the platform's "why this ad" targeting reason codes:
   categories such as age or location interests that the platform says the
@@ -46,6 +45,12 @@ Before the user's affirmative choice, the partner MUST clearly explain:
   the remaining evidence unlinkable.
 - When the partner has enabled sending the passive search query: that the user's
   search query is sent with each report.
+- When the partner uses delegated advertiser resolution (§6.3): that reports carry
+  the page's Google lookup token, which is bound to the user's Google session and
+  carries a precise timestamp, and per-ad batch codes, which can link reports to a
+  Google page or request; that the operator, not the browser, looks up the
+  advertiser; and that ads are sent before their authorization is known, so reports
+  can include ads that turn out to be authorized.
 - The client metadata sent with every report: the client's country, from IP
   geolocation, and device form, from browser headers, both derived by the relay.
 - That each token carries a value the issuer assigns to the account, one of four,
@@ -264,7 +269,7 @@ what an issuer encodes in them.
 | `SEARCH_SUBMIT_DELAY` | uniformly random, 60–900 s | Separates a `search` submission from search completion so arrival time alone does not match a result to its assignment. It does not prevent correlation (§7). |
 | `ENVELOPE_MAX_BYTES` | 524288 | Complete serialized UTF-8 envelope. Clients null `ad_html` values, largest first, to fit ([`envelope.md`](envelope.md#size)). |
 | `AD_HTML_MAX_BYTES` | 65536 | Each `ad_html` string, as UTF-8 bytes. |
-| `K` (auto-escalation quorum) | 3 distinct tokens | At K sightings of the same (brand, grouping hash, country, day) a candidate escalates automatically. Below K, sightings sit in the analyst triage queue from the first one: cloaked and targeted scam ads are often visible only to the users they target, so a single sighting must be reviewable. Reports contain correlatable page-scoped lookup values and platform click data; access and retention must reflect that. |
+| `K` (auto-escalation quorum) | 3 distinct tokens | At K sightings of the same (brand, grouping hash, country, day) a candidate escalates automatically. Below K, sightings sit in the analyst triage queue from the first one: cloaked and targeted scam ads are often visible only to the users they target, so a single sighting must be reviewable. Reports contain correlatable platform click data and, in delegated mode, page-scoped lookup values; access and retention must reflect that. |
 | `RAW_RETENTION` | 90 days | Accepted envelopes at the collector; aggregates and case files persist. |
 
 Partners may lower `BATCH_SIZE`/`DAILY_QUOTA`; raising them above these values takes the
@@ -278,11 +283,10 @@ partner out of conformance with this profile. Transport limits are in
    brand terms and authorized aliases do not add matches. The background owns the
    persisted cache, with freshness limited to 24 hours and the document's `expires`.
    Expired or stale data cannot trigger lookup/submission. See [`watchlist.md`](watchlist.md).
-2. **`sighting`:** the client looks up each matched ad's Google advertiser and evaluates its ID locally using `policy` and `authorized_advertiser_ids`. Authorized identities, unknown IDs, absent authorization data and open policies are not submitted. Only likely unauthorized identities under a complete closed/none policy are reported. If no ad on the page qualifies, nothing is sent and no token is consumed. Recheck the current policy after lookup and token storage. This is an authorization signal, not proof of fraud. The client then builds one envelope for the page's qualifying ads ([`envelope.md`](envelope.md)): per ad, the observed domain, matched brand, sanitized
-   optional creative, advertiser name/country and optional targeting reason codes, original batch code, optional `ad_id` and sanitized `ad_html`; per page, the original atParameter and one unused token. No adKey, encoded helper,
+2. **`sighting`, default mode:** the client looks up each matched ad's Google advertiser and evaluates its ID locally using `policy` and `authorized_advertiser_ids`. Authorized identities, unknown IDs, absent authorization data and open policies are not submitted. Only likely unauthorized identities under a complete closed/none policy are reported. If no ad on the page qualifies, nothing is sent and no token is consumed. Recheck the current policy after lookup and token storage. This is an authorization signal, not proof of fraud. The client then builds one envelope for the page's qualifying ads ([`envelope.md`](envelope.md)): per ad, the observed domain, matched brand, sanitized
+   optional creative, advertiser name/country and optional targeting reason codes, optional `ad_id` and sanitized `ad_html`; per page, one unused token. The page's `at` lookup token, the batch codes and the Google account index are used only locally for the lookup and are not sent. No adKey, encoded helper,
    raw response, cookies, account fields or explicit query field is copied, except
-   the partner opt-in `keyword` below. The at
-   value deliberately retains its precise timestamp and page/request association.
+   the partner opt-in `keyword` below.
    Query matches in creative text, click URLs and ad HTML are replaced before construction,
    preserving unrelated evidence; a matching term alone does not discard the entire
    click URL. Terms that coincide with the ad's observed domain or brand are not
@@ -292,7 +296,13 @@ partner out of conformance with this profile. Transport limits are in
    **Passive query (partner opt-in).** By default the client redacts the query and
    sends none. A partner may opt in to sending it: the sighting then carries
    `keyword`, the page's search query, NFC-normalized and trimmed, 1–200 characters,
-   and omits it otherwise. Creative and `ad_html` redaction is unchanged either way.
+   and omits it otherwise. When the keyword is sent, query redaction is skipped for
+   that sighting; every other sanitization rule still applies.
+
+   **`sighting`, delegated mode:** the client skips the lookup and the authorization
+   gate and reports every watchlist-matched ad that has a batch code, with the
+   page's `lookup.atParameter` and each ad's `batch_code` and no advertiser (§6.3).
+   The client never sends the Google account index in either mode.
 
    **`search`:** see §6.2.
 3. The client encodes the report as Binary HTTP, encrypts it for the gateway and POSTs `message/ohttp-req` to the relay at `/ohttp`. The relay derives the client's country and device form from the connection and forwards the opaque bytes to its fixed gateway with only `Fray-Country`, `Fray-Device` and `Fray-Relay-Auth`. The gateway decrypts the report and forwards `{ "country": "GB", "device": "macos-desktop", "envelope": {...} }` to the private collector with a bearer token. It uses the relay's values only with valid relay authentication, and `ZZ` (unknown) and `other` otherwise. See [`relay.md`](relay.md) for derivation, key discovery and limits.
@@ -304,8 +314,10 @@ partner out of conformance with this profile. Transport limits are in
       the byte limits (524288 per envelope, 65536 per `ad_html`) and repeat the
       final `ad_html` safety checks ([`envelope.md`](envelope.md#ad_html-sanitization),
       step 5). A `sighting` carrying `keyword` is accepted only from an issuer the
-      operator has configured to send it. A failure here rejects the envelope
-      before any token work.
+      operator has configured to send it. A delegated envelope is accepted only by a
+      collector that runs an advertiser resolver, and only from an issuer the
+      operator has configured for delegated mode. A failure here rejects the
+      envelope before any token work.
    3. **Token.** Check `token.issuer` against the configured partner allowlist.
       Check `token.kid` is within the acceptance window (current or previous
       month) and that the issuer's JWKS publishes exactly four keys for it;
@@ -319,8 +331,10 @@ partner out of conformance with this profile. Transport limits are in
       `brand` must be on the watchlist version claimed or the previous one, and
       that version must not be expired. Each ad's `observed_domain` must equal its
       `brand` or be a subdomain of it. Membership in `authorized_domains` does not
-      suppress that match. Any failing ad rejects the whole envelope. Then, for
-      each ad, increment the quorum counter for `(brand, grouping hash, country,
+      suppress that match. Any failing ad rejects the whole envelope. For a
+      delegated sighting, the operator then resolves each ad's advertiser and
+      applies the authorization gate ([`watchlist.md`](watchlist.md)) itself
+      (§6.3). Then, for each reported ad, increment the quorum counter for `(brand, grouping hash, country,
       UTC day)`, where the grouping hash is defined below and `country` is the
       wrapper's. One token counts once per counter. The first sighting of a new
       `(brand, grouping hash)` enters the analyst **triage** queue. At count ≥ K,
@@ -345,15 +359,16 @@ The grouping hash is SHA-256 of the JSON array
   `['name', lowercase(NFC(name)), lowercase(NFC(country ?? ''))]`.
 - `creative` is `lowercase(NFC(title))`, or `null`.
 
-The page-scoped batch code and atParameter, `ad_id` and `ad_html` are excluded from
-this grouping key, so new page/request values do not split the same
-advertiser/creative into new review groups. The complete accepted envelope,
+For a delegated envelope, `identity` uses the advertiser the operator resolved.
+`ad_id`, `ad_html` and, in delegated envelopes, the page-scoped batch code and
+atParameter are excluded from this grouping key, so new page/request values do not
+split the same advertiser/creative into new review groups. The complete accepted envelope,
 including all of these values, is still persisted for **90 days**. Grouping does
 not remove payload correlation.
 
 ### 6.1 Human review and evidence
 
-Human review starts at the first accepted report. K is a prioritization signal, not a gate. Creative and advertiser text is sanitized before construction, and the report also carries page-scoped request values, platform click data and sanitized ad markup. Those values may link reports to a Google page, request or click and must be treated as correlatable data in analyst access, exports and retention.
+Human review starts at the first accepted report. K is a prioritization signal, not a gate. Creative and advertiser text is sanitized before construction, and the report also carries platform click data, sanitized ad markup and, in delegated mode, page-scoped request values. Those values may link reports to a Google page, request or click and must be treated as correlatable data in analyst access, exports and retention.
 
 Operators should attempt independent reproduction for every candidate and record
 the result. Reproduction and case publication are operational responsibilities.
@@ -389,8 +404,10 @@ A host that runs background searches:
    and to `blocked` (captcha, consent or "unusual traffic" page) or `error` for a
    failed attempt.
 5. Reports every ad extracted from the page, with its position, without the
-   watchlist match or authorization gate. It looks up each ad's advertiser and
-   sends `null` when the lookup fails.
+   watchlist match or authorization gate. In default mode it looks up each ad's
+   advertiser and sends `null` when the lookup fails. In delegated mode it sends the
+   page's `lookup.atParameter` and each ad's `batch_code` instead, and the operator
+   resolves the advertisers (§6.3).
 6. Applies every sanitization rule in [`envelope.md`](envelope.md) except query
    redaction.
 7. Submits after a uniformly random delay of 60–900 s from search completion
@@ -402,8 +419,9 @@ gate and quorum. It delivers the result to the job sink configured for the token
 with bearer authentication; delivery is idempotent on a delivery ID. The delivered
 result contains a delivery ID, the receipt time, `observed_hour`, the wrapper's
 country (`null` when `ZZ`), the effective device, `keyword`, `outcome` and the ads
-(position, observed domain, `ad_id`, advertiser, creative, batch code and
-`ad_html`). The token is never forwarded.
+(position, observed domain, `ad_id`, advertiser, creative, `ad_html` and, when the
+envelope has one, the batch code). For a delegated search, the advertiser is the one
+the operator resolved. The token and the page's lookup token are never forwarded.
 
 The envelope carries no account credential or account identifier. The job issuer
 nevertheless knows which account polled which job when it assigned it, and can
@@ -411,6 +429,37 @@ correlate a result with that assignment by keyword, device, country and timing
 (§7). A job issuer should keep no durable record linking accounts to assigned
 jobs and should discard assignment state when a job expires. That is an
 operational choice of the job issuer, not a property this protocol enforces.
+
+### 6.3 Delegated advertiser resolution
+
+By default the client resolves each advertiser itself, in the user's browser, and
+the envelope carries the advertiser details but neither the page's `at` lookup
+token nor batch codes. The `at` value is a CSRF token bound to the user's Google
+session and carries a precise timestamp; batch codes are page-scoped request
+values. In default mode both stay on the client, which uses them, with the Google
+account index from the same page, only for its own lookup.
+
+A partner may instead choose **delegated** mode, in which the client skips its own
+advertiser lookup:
+
+1. The client sends the page's `lookup.atParameter` and each ad's `batch_code`, and
+   no advertiser ([`envelope.md`](envelope.md)). It never sends the account index.
+2. For a sighting, the client applies only the watchlist domain match, not the
+   authorization gate. Every watchlist-matched ad with a batch code is reported
+   before its authorization is known.
+3. The operator resolves each advertiser server-side. For a sighting it then
+   applies the authorization gate of [`watchlist.md`](watchlist.md) to each ad,
+   as a default-mode client would, before quorum and triage. For a search it
+   delivers the resolved advertisers to the job sink.
+4. A collector without an advertiser resolver, or an envelope from an issuer the
+   operator has not configured for delegated mode, is rejected before any token
+   work (§6, collector step 2).
+
+Delegated mode moves the lookup off the client. It also means reports carry
+session-bound, timestamped page values that can link them to a Google page or
+request, and they include ads before authorization is known. The stored envelope
+keeps those values for the raw-report retention period. A partner that uses
+delegated mode must disclose this in its consent text (§1.1).
 
 ## 7. What this protects against — and what it doesn't
 
@@ -436,20 +485,24 @@ operational choice of the job issuer, not a property this protocol enforces.
 
 **Limits:**
 
-- **Payload correlation is deliberate.** Batch codes and atParameter are original
-  Google page/request values. The at value includes a precise timestamp. A
-  recipient can associate them with that page/request, and Google can correlate
-  them against its records. Repeated values can connect reports. Do not describe
-  reports as containing no identifiers, no precise timestamps, or no linkable data.
-- **`ad_html` and click URLs carry platform click data.** They keep the platform's
-  click links with `gclid` and `ai` values, and `gclid` values contain precise click
-  timestamps. Hour bucketing of `observed_hour` therefore does not hide capture
-  time from anyone holding `ad_html` or `click_url`, and the platform can recognize
-  these values. `ad_id` is the same platform value as `ai`.
+- **Default reports are not unlinkable.** `ad_html` and click URLs keep the
+  platform's click links with `gclid` and `ai` values, and `gclid` values contain
+  precise click timestamps. Hour bucketing of `observed_hour` therefore does not
+  hide capture time from anyone holding `ad_html` or `click_url`, and the platform
+  can recognize these values. `ad_id` is the same platform value as `ai`. Do not
+  describe any report as containing no identifiers, no precise timestamps, or no
+  linkable data.
+- **In delegated mode, payload correlation is deliberate.** Batch codes and
+  atParameter are original Google page/request values; the at value is bound to
+  the user's Google session and includes a precise timestamp. A recipient can
+  associate them with that page/request, and Google can correlate them against its
+  records. Repeated values can connect reports. Delegated sightings also include
+  ads before their authorization is known, so recipients receive ads that turn
+  out to be authorized.
 - **Relay-provided country and device form narrow the anonymity set.** A report
   from a less common country or device form is one of fewer possible clients.
-  Combined with timing and the page-scoped values above, this metadata can help
-  single out a client.
+  Combined with timing, the platform click data and, in delegated mode, the
+  page-scoped values above, this metadata can help single out a client.
 - **Targeting codes say a little about the user.** `advertiser.targeting` carries
   the platform's reason codes: which kinds of profile signal the platform says
   reached this user, for example that age or location interests were used, but not
@@ -457,8 +510,8 @@ operational choice of the job issuer, not a property this protocol enforces.
   whether a signal came from the user's account or was an estimate. The operator
   maps the codes to names with its own table, and anyone who knows the platform's
   codes can read them. Combined with the creative and the relay country, they say
-  a little about the user who saw the ad. This applies to `search` reports too: a host-run search is
-  made in the user's own browser session, so its lookups can return categories
+  a little about the user who saw the ad. This applies to `search` reports too: in default mode a host-run search
+  and its lookups are made in the user's own browser session, so they can return categories
   that reflect that user's profile even though the keyword was not theirs.
 - **Issuer metadata partitions reports.** `token.meta` splits one issuer's reports
   into at most four groups per epoch, and together with country and device form
@@ -485,10 +538,12 @@ operational choice of the job issuer, not a property this protocol enforces.
   delay weakens timing correlation; it does not prevent it, particularly for a
   rarely assigned keyword.
 - **Background searches run in the user's browser session.** The platform receives
-  the searches and the advertiser lookups as that browser's traffic.
+  the searches, and in default mode the advertiser lookups, as that browser's
+  traffic.
 - OHTTP hides the client network IP from the gateway in the independent-relay
-  design; it does not anonymize decrypted payload fields. It also does not hide
-  the content script's advertiser lookup from Google.
+  design; it does not anonymize decrypted payload fields. In default mode it also
+  does not hide the client's advertiser lookup from Google, which receives that
+  lookup from the user's browser.
 - A platform can recognize its own creative.click_url parameters. Creative query
   and click-URL keyword redaction preserves unrelated evidence and does not remove
   the correlation properties of retained platform data. Redaction is not a claim
@@ -507,8 +562,9 @@ operational choice of the job issuer, not a property this protocol enforces.
 
 ## 8. Wire formats
 
-Reports use envelope version `v: 3`, with two kinds, `sighting` and `search`; the
-published watchlist uses format `v: 1`. These version fields identify separate
+Reports use envelope version `v: 3`, with two kinds, `sighting` and `search`, each
+in a default (client-resolved) or delegated form told apart by the presence of
+`lookup`; the published watchlist uses format `v: 1`. These version fields identify separate
 contracts. Envelope versions 1 and 2 are retired: no deployed client sent them,
 and the v3 schema rejects them. v3 tokens are RFC 9474
 `RSABSSA-SHA384-PSS-Deterministic` signatures under one of four epoch keys and carry
