@@ -2,13 +2,19 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://jointhefray.org/schemas/envelope.json",
   "title": "Fray report envelope",
-  "description": "Wire version 3. One envelope describes one Google results page and carries one token. Byte limits (524288 per envelope, 65536 per ad_html) are checked on the serialized UTF-8 form, not by this schema. Tokens are RFC 9474 RSABSSA-SHA384-PSS-Deterministic signatures. Each epoch has exactly four issuer keys, one per metadata value; the key that signed a token carries its 2 bits of issuer-assigned public metadata.",
+  "description": "Wire version 3. One envelope describes one Google results page and carries one token. Default (client-resolved) envelopes carry the advertiser details the client looked up and carry neither the page's lookup token (lookup.atParameter) nor per-ad batch codes. Delegated envelopes skip the client lookup: they carry lookup.atParameter and per-ad batch_code instead of advertiser details, for resolution by the collector's operator. Byte limits (524288 per envelope, 65536 per ad_html) are checked on the serialized UTF-8 form, not by this schema. Tokens are RFC 9474 RSABSSA-SHA384-PSS-Deterministic signatures. Each epoch has exactly four issuer keys, one per metadata value; the key that signed a token carries its 2 bits of issuer-assigned public metadata.",
   "oneOf": [
     {
       "$ref": "#/$defs/sighting"
     },
     {
+      "$ref": "#/$defs/sighting_delegated"
+    },
+    {
       "$ref": "#/$defs/search"
+    },
+    {
+      "$ref": "#/$defs/search_delegated"
     }
   ],
   "$defs": {
@@ -159,13 +165,15 @@
           "maxLength": 528,
           "pattern": "^[A-Za-z0-9_-]{10,512}(?::|%3[Aa])[0-9]{13}$"
         }
-      }
+      },
+      "description": "Delegated envelopes only: the page's lookup token, for server-side advertiser resolution. Absent in default (client-resolved) envelopes."
     },
     "batch_code": {
       "type": "string",
       "minLength": 1,
       "maxLength": 8064,
-      "pattern": "^[^\\u0000-\\u0020\\u007f]+$"
+      "pattern": "^[^\\u0000-\\u0020\\u007f]+$",
+      "description": "Delegated envelopes only: the ad's original batch code, for server-side advertiser resolution."
     },
     "ad_html": {
       "anyOf": [
@@ -225,7 +233,6 @@
         "observed_domain",
         "creative",
         "advertiser",
-        "batch_code",
         "ad_html"
       ],
       "properties": {
@@ -243,9 +250,6 @@
         },
         "advertiser": {
           "$ref": "#/$defs/advertiser"
-        },
-        "batch_code": {
-          "$ref": "#/$defs/batch_code"
         },
         "ad_html": {
           "$ref": "#/$defs/ad_html"
@@ -287,9 +291,6 @@
             }
           ]
         },
-        "batch_code": {
-          "$ref": "#/$defs/batch_code"
-        },
         "ad_html": {
           "$ref": "#/$defs/ad_html"
         }
@@ -305,7 +306,6 @@
         "platform",
         "surface",
         "observed_hour",
-        "lookup",
         "ads",
         "token"
       ],
@@ -343,9 +343,6 @@
             }
           ],
           "description": "Optional on sightings, and only from a partner that has opted in to sending the passive search query (and whose collector configuration allows it): the page's search query as the browser supplied it, NFC-normalized and trimmed. Absent by default."
-        },
-        "lookup": {
-          "$ref": "#/$defs/lookup"
         },
         "ads": {
           "type": "array",
@@ -413,9 +410,6 @@
             "error"
           ]
         },
-        "lookup": {
-          "$ref": "#/$defs/lookup"
-        },
         "ads": {
           "type": "array",
           "minItems": 0,
@@ -434,7 +428,206 @@
       "minLength": 1,
       "maxLength": 512,
       "pattern": "^[^\\u0000-\\u0020\\u007f]+$",
-      "description": "Google's identifier for the served creative, as returned by the advertiser lookup; equals the ai= parameter of the ad's main click link. Optional."
+      "description": "Google's identifier for the served creative; equals the ai= parameter of the ad's main click link. In default mode it comes from the client's advertiser lookup; in delegated mode a client may take it from that click link. Optional."
+    },
+    "sighting_ad_delegated": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "brand",
+        "observed_domain",
+        "creative",
+        "ad_html",
+        "batch_code"
+      ],
+      "properties": {
+        "brand": {
+          "$ref": "#/$defs/domain"
+        },
+        "observed_domain": {
+          "$ref": "#/$defs/domain"
+        },
+        "ad_id": {
+          "$ref": "#/$defs/ad_id"
+        },
+        "creative": {
+          "$ref": "#/$defs/creative"
+        },
+        "batch_code": {
+          "$ref": "#/$defs/batch_code"
+        },
+        "ad_html": {
+          "$ref": "#/$defs/ad_html"
+        }
+      }
+    },
+    "search_ad_delegated": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "position",
+        "observed_domain",
+        "creative",
+        "ad_html",
+        "batch_code"
+      ],
+      "properties": {
+        "position": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50
+        },
+        "observed_domain": {
+          "$ref": "#/$defs/domain"
+        },
+        "ad_id": {
+          "$ref": "#/$defs/ad_id"
+        },
+        "creative": {
+          "$ref": "#/$defs/creative"
+        },
+        "batch_code": {
+          "$ref": "#/$defs/batch_code"
+        },
+        "ad_html": {
+          "$ref": "#/$defs/ad_html"
+        }
+      }
+    },
+    "sighting_delegated": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "kind",
+        "watchlist_version",
+        "platform",
+        "surface",
+        "observed_hour",
+        "ads",
+        "token",
+        "lookup"
+      ],
+      "properties": {
+        "v": {
+          "const": 3
+        },
+        "kind": {
+          "const": "sighting"
+        },
+        "watchlist_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "platform": {
+          "const": "google.com"
+        },
+        "surface": {
+          "const": "search"
+        },
+        "observed_hour": {
+          "$ref": "#/$defs/observed_hour"
+        },
+        "device": {
+          "$ref": "#/$defs/device"
+        },
+        "keyword": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "pattern": "^[^\\u0000-\\u001f\\u007f]+$",
+          "allOf": [
+            {
+              "pattern": "\\S"
+            }
+          ],
+          "description": "Optional on sightings, and only from a partner that has opted in to sending the passive search query (and whose collector configuration allows it): the page's search query as the browser supplied it, NFC-normalized and trimmed. Absent by default."
+        },
+        "ads": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20,
+          "items": {
+            "$ref": "#/$defs/sighting_ad_delegated"
+          }
+        },
+        "token": {
+          "$ref": "#/$defs/token"
+        },
+        "lookup": {
+          "$ref": "#/$defs/lookup"
+        }
+      }
+    },
+    "search_delegated": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "kind",
+        "platform",
+        "surface",
+        "observed_hour",
+        "device",
+        "keyword",
+        "outcome",
+        "ads",
+        "token",
+        "lookup"
+      ],
+      "properties": {
+        "v": {
+          "const": 3
+        },
+        "kind": {
+          "const": "search"
+        },
+        "platform": {
+          "const": "google.com"
+        },
+        "surface": {
+          "const": "search"
+        },
+        "observed_hour": {
+          "$ref": "#/$defs/observed_hour"
+        },
+        "device": {
+          "$ref": "#/$defs/device"
+        },
+        "keyword": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "pattern": "^[^\\u0000-\\u001f\\u007f]+$",
+          "allOf": [
+            {
+              "pattern": "\\S"
+            }
+          ],
+          "description": "The job keyword exactly as the host received it from its job source; never re-derived from the page or its q= parameter."
+        },
+        "outcome": {
+          "enum": [
+            "ok",
+            "blocked",
+            "error"
+          ]
+        },
+        "ads": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 20,
+          "items": {
+            "$ref": "#/$defs/search_ad_delegated"
+          }
+        },
+        "token": {
+          "$ref": "#/$defs/token"
+        },
+        "lookup": {
+          "$ref": "#/$defs/lookup"
+        }
+      }
     }
   }
 }
