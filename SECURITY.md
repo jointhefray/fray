@@ -1,6 +1,6 @@
 # Security
 
-Report vulnerabilities privately to **security@marcode.ai** or through
+Report vulnerabilities privately to **team@jointhefray.org** or through
 [GitHub's private vulnerability reporting](https://github.com/jointhefray/fray/security/advisories/new).
 Include the affected commit, a minimal reproduction with fictional data, the
 expected behavior and the potential impact. Do not include live credentials,

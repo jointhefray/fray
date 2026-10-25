@@ -7,5 +7,5 @@ browsing activity.
 
 Maintainers may edit or remove inappropriate contributions and restrict
 participation when necessary. Report conduct concerns privately to
-security@marcode.ai. Maintainers will handle reports with discretion and consider
+team@jointhefray.org. Maintainers will handle reports with discretion and consider
 the context and impact when responding.
