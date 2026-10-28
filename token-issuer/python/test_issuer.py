@@ -214,6 +214,20 @@ def test_rfc9474_a3_vector_issuer_and_test_client():
     assert finalize(n, msg, blind_sig, r_inv).hex() == RFC_VECTOR["sig"]
 
 
+@pytest.mark.parametrize("p,q", [(11, 41), (41, 11)])
+def test_blind_sign_matches_rsasp1_for_both_prime_orders(p, q, monkeypatch):
+    # Exhaust a small RSA key, including CRT residues with s_p < s_q and s_q >= p.
+    # Fix the blinding factor to 2 so the regression never depends on randomness.
+    key = SigningKey.from_rsa(
+        RSA.construct((p * q, 3, pow(3, -1, (p - 1) * (q - 1)), p, q))
+    )
+    monkeypatch.setattr(secrets, "randbelow", lambda _upper: 0)
+    k_len = (key.n.bit_length() + 7) // 8
+    for message in range(key.n):
+        signature = blind_sign(key, message.to_bytes(k_len, "big"))
+        assert int.from_bytes(signature, "big") == pow(message, key.d, key.n)
+
+
 def test_fault_protection_explicit_check_rejects_a_faulty_crt_half():
     for meta in range(4):
         key = SigningKey.from_rsa(fixture_key(0, meta))

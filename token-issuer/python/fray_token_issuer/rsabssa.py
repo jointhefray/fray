@@ -20,8 +20,8 @@ def is_token_meta(value: object) -> TypeGuard[int]:
 
 
 def _pow(base: Integer, exponent: Integer, modulus: Integer) -> Integer:
-    """pow() on PyCryptodome Integers: GMP when available, else its Montgomery code."""
-    result: Integer = pow(base, exponent, modulus)  # type: ignore[misc]
+    """Modular exponentiation using PyCryptodome's integer arithmetic."""
+    result: Integer = pow(base, exponent, modulus)
     return result
 
 
@@ -47,8 +47,7 @@ class SigningKey:
 def blind_sign(key: SigningKey, blinded: bytes) -> bytes:
     """BlindSign: RSASP1 with RSA blinding and CRT, then the RSAVP1 check.
 
-    Modular exponentiation is pow() on PyCryptodome's Integer: GMP when available,
-    otherwise PyCryptodome's Montgomery code (CPython's int pow is several times slower).
+    Modular exponentiation is pow() on PyCryptodome's Integer arithmetic.
 
     Fault protection (spec/protocol.md section 2): this signer computes CRT itself and
     nothing verifies it internally, so the explicit RSAVP1 check below is mandatory. It
@@ -72,7 +71,10 @@ def blind_sign(key: SigningKey, blinded: bytes) -> bytes:
     # RSASP1 by CRT: s = s_q + q * ((s_p - s_q) * q^-1 mod p).
     s_p = _pow(c % p, Integer(key.dp), p)
     s_q = _pow(c % q, Integer(key.dq), q)
-    s = (s_q + q * ((s_p - s_q) * Integer(key.q_inv) % p)) * Integer(r_inv) % n
+    # PyCryptodome 4 Integers cannot be negative. Reduce s_q modulo p before
+    # adding p, so the subtraction is nonnegative for either prime ordering.
+    difference = s_p + p - (s_q % p)
+    s = (s_q + q * (difference * Integer(key.q_inv) % p)) * Integer(r_inv) % n
     # RSAVP1 check with (n, e): the fault protection. Never remove it.
     if int(_pow(s, e, n)) != m:
         raise RuntimeError("signing failure")
