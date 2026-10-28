@@ -141,10 +141,10 @@ dedicated keys.
 
 Each blinded message is signed with the private key for the request's value, using
 RSA blinding (a fresh random r per signature) and CRT. The exponentiations use `pow()`
-on PyCryptodome's `Integer` (GMP when available, otherwise PyCryptodome's Montgomery
-code). The `cryptography` package exposes no raw RSA private operation, so the
-signer does not go through OpenSSL. PSS encoding, blinding and finalization stay
-client-side.
+on PyCryptodome's `Integer` arithmetic. The CRT subtraction keeps its intermediate
+value nonnegative, as required by PyCryptodome 4. The `cryptography` package exposes
+no raw RSA private operation, so the signer does not go through OpenSSL. PSS
+encoding, blinding and finalization stay client-side.
 
 Fault protection ([protocol §2](../../spec/protocol.md#2-cryptographic-suite)): this
 signer computes CRT itself and nothing checks it internally, so every signature goes
@@ -153,11 +153,9 @@ is returned. With e = 65537 the check is cheap. A faulty CRT half would reveal a
 factor of n; a test corrupts `dp` and `dq` and requires the check to refuse. Never
 remove it.
 
-On a developer laptop with GMP: 0.9 ms per signature including the check, so a
-16-token `/issue` request takes about 14 ms (1.5 ms per signature and about 25 ms
-without GMP). PyCryptodome is pinned (`3.23.0`); recheck the RFC 9474 vector and the
-interoperability tests before upgrading. This implementation has not undergone an
-independent cryptographic audit.
+PyCryptodome is pinned (`4.2.0`); recheck the RFC 9474 vector, the CRT regression
+tests for both prime orderings, and the interoperability tests before upgrading.
+This implementation has not undergone an independent cryptographic audit.
 
 Audit events contain only `ts`, `event`, `client`, `count`, `epoch`. Do not log
 credentials, headers, blinded messages or token values. The subject remains with
