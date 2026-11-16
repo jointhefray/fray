@@ -461,6 +461,19 @@ request, and they include ads before authorization is known. The stored envelope
 keeps those values for the raw-report retention period. A partner that uses
 delegated mode must disclose this in its consent text (§1.1).
 
+### 6.4 Delegated domain checks
+
+Separately from §6.3, a partner may keep its watchlist on its own server. The
+client then sends the hostnames of the ads on a results page to the partner's
+authenticated check endpoint and receives the authorization records of the ones
+the partner watches
+([`watchlist.md`](watchlist.md#delegated-domain-checks)). The client still
+resolves advertisers and applies the authorization gate itself, and reports
+default envelopes; the collector is unchanged. The check is a direct,
+account-authenticated request outside the token and relay path, so the partner
+learns which ad hostnames an account saw. The consent text must disclose it
+(§1.1).
+
 ## 7. What this protects against — and what it doesn't
 
 **Protections with the required deployment:**

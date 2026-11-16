@@ -106,6 +106,90 @@ Fetches carry no credentials or explicit user identifiers. Watchlist responses
 are validated before persistence. This cache stores public matching scope; it
 must not store Google page tokens, lookup responses, or client browsing activity.
 
+## Delegated domain checks
+
+A partner that operates its own authorization source may keep the whole list,
+domains included, on its server. The extension then does not download the
+watchlist.
+
+For each results-page scan, after consent, the **background script** sends the
+hostnames displayed by that page's ads to the partner's check endpoint:
+
+```http
+POST https://issuer.partner.example/fray/check
+Authorization: Bearer <the partner's account credential>
+Content-Type: application/json
+
+{ "domains": ["shop.example-fashion.com", "unrelated.example"] }
+```
+
+`domains` holds 1–100 unique, lowercase ASCII hostnames taken from the ads'
+display URLs, subdomains retained. The request carries nothing else: no query,
+page URL, creative, Google page token, batch code or observed advertiser. Use
+`credentials: omit` and omit the referrer.
+
+A successful response is a watchlist document
+([`watchlist.schema.json`](watchlist.schema.json)) holding **only** the entries
+that cover a submitted hostname, the most specific watched suffix of each:
+
+```json
+{
+  "v": 1,
+  "version": 12,
+  "published": "2026-11-06T09:00:00Z",
+  "expires": "2026-11-07T09:00:00Z",
+  "entries": [
+    {
+      "domain": "example-fashion.com",
+      "brand_terms": [],
+      "authorized_domains": ["example-fashion.com"],
+      "policy": "closed",
+      "authorized_advertiser_ids": ["AR12345678901234567890"]
+    }
+  ]
+}
+```
+
+A hostname the operator does not watch has no entry; that is not `policy: none`.
+`version` and `expires` are those of the operator's current snapshot, and every
+returned record is complete: never truncate an authorization list. Responses use
+`Cache-Control: no-store`.
+
+| Status | Meaning / client action |
+| --- | --- |
+| `200` | Records for the watched hostnames; validate before use. |
+| `400` | Invalid request; do not retry unchanged. |
+| `401` | Missing or invalid account credential. |
+| `429` | The account's check quota is used up; authorization is unknown. |
+| `503` | Authorization data unavailable; authorization is unknown. |
+
+The client rejects a malformed or expired document and any entry that covers
+none of the submitted hostnames. It then applies the [lookup rule](#lookup-rule)
+and the [local authorization gate](#local-authorization-gate) to the returned
+records exactly as to a downloaded list, and reports with the response's
+`version` as `watchlist_version`. A failure produces `unknown` and no report,
+with bounded backoff (1 minute, doubling to at most 15).
+
+The client keeps answers, including "not watched", in memory for at most one
+hour and never beyond `expires`. It does not persist them, holds records of one
+revision only, and asks again for all of a scan's hostnames when any is
+unanswered, so one response covers the scan.
+
+The operator authenticates the account and enforces a per-account quota (the
+reference deployment: 30 requests per 5 minutes and 500 per UTC day), which
+bounds how much of the list one account can discover by guessing hostnames. It
+must not log or store the submitted hostnames, or use them for anything but the
+answer.
+
+**Privacy.** These checks are not anonymous. The operator receives the ad
+hostnames an account saw on its searches, with the request's network address
+and time, including hostnames of ads that are never reported. They do not use
+reporting tokens or the relay. A partner using delegated domain checks
+must disclose this recipient and linkage before consent
+([`protocol.md` §1.1](protocol.md#11-informed-explicit-consent-before-enrollment)).
+The trade is deliberate: the public no longer receives the operator's complete
+list of protected domains and authorized advertisers.
+
 ## Publication
 
 Serve the watchlist as public JSON over HTTPS, without requiring account
