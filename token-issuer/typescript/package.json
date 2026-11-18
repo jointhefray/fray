@@ -32,11 +32,11 @@
     "test": "node --import tsx --test test/*.test.ts"
   },
   "dependencies": {
-    "fastify": "^5.12.7"
+    "fastify": "^5.12.8"
   },
   "devDependencies": {
     "@cloudflare/blindrsa-ts": "^0.4.6",
-    "@types/node": "^26.6.5",
+    "@types/node": "^26.6.6",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
   }
